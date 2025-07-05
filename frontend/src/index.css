@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply font-inter;
+  }
+  
+  body {
+    @apply antialiased;
+  }
+}
+
+@layer components {
+  .mood-gradient {
+    @apply bg-gradient-to-br from-mood-happy-primary via-mood-happy-secondary to-mood-happy-accent;
+  }
+  
+  .glass-effect {
+    @apply backdrop-blur-md bg-white/20 border border-white/30;
+  }
+  
+  .mood-card {
+    @apply rounded-2xl p-6 shadow-lg transition-all duration-300 hover:shadow-xl hover:scale-105;
+  }
+  
+  .mood-button {
+    @apply px-6 py-3 rounded-full font-medium transition-all duration-300 transform hover:scale-105 active:scale-95;
+  }
+  
+  .mood-input {
+    @apply w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-mood-happy-primary focus:outline-none transition-colors duration-300;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 rounded-full;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-mood-happy-primary rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-mood-happy-secondary;
+}

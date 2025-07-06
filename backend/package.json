@@ -1,27 +1,40 @@
 {
-  "$schema": "https://json.schemastore.org/package.json",
-  "name": "backend",
+  "name": "emotemoder-backend",
   "version": "1.0.0",
+  "description": "Backend for Emote Moder - Mood Adaptive Social Platform",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "axios": "^1.10.0",
-    "connect-redis": "^9.0.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
     "express": "^4.18.2",
-    "express-session": "^1.18.1",
-    "firebase": "^10.14.1",
-    "mongoose": "^8.0.0",
-    "passport": "^0.7.0",
+    "mongoose": "^7.5.0",
+    "passport": "^0.6.0",
     "passport-google-oauth20": "^2.0.0",
-    "redis": "^5.5.6"
+    "express-session": "^1.17.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "redis": "^4.6.8",
+    "connect-redis": "^7.1.0",
+    "axios": "^1.5.0",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "mood",
+    "emotion",
+    "social",
+    "ai",
+    "chatbot",
+    "sentiment-analysis"
+  ],
+  "author": "Emote Moder Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

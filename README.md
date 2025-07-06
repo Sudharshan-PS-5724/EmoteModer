@@ -175,18 +175,47 @@ The application is fully responsive and optimized for:
 
 ## 🚀 Deployment
 
-### Vercel (Frontend)
+### 🎯 Vercel + Render + Redis Setup
+
+We recommend using **Vercel** for frontend and **Render** for backend + Redis for optimal performance and scalability.
+
+#### **Quick Deployment**
 ```bash
-cd frontend
-npm run build
-# Deploy to Vercel
+# Run the deployment script
+chmod +x deploy.sh
+./deploy.sh
 ```
 
-### Render (Backend)
-```bash
-cd backend
-# Connect to Render and deploy
-```
+#### **Manual Deployment Steps**
+
+**1. Backend (Render)**
+- Create account at [render.com](https://render.com)
+- Connect GitHub repository
+- Create Web Service (backend folder)
+- Add environment variables:
+  ```env
+  MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/emotemoder
+  SESSION_SECRET=your_super_secret_session_key_here
+  OPENROUTER_API_KEY=sk-or-your-openrouter-key
+  HUGGINGFACE_API_KEY=hf_your_huggingface_key
+  NODE_ENV=production
+  ```
+
+**2. Redis (Render)**
+- Create Redis service in Render
+- Add `REDIS_URL` to backend environment variables
+
+**3. Frontend (Vercel)**
+- Create account at [vercel.com](https://vercel.com)
+- Import GitHub repository
+- Configure as Vite project (frontend folder)
+- Add environment variable:
+  ```env
+  VITE_API_BASE=https://your-backend-url.onrender.com
+  ```
+
+#### **Detailed Guide**
+See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for comprehensive deployment instructions.
 
 ### Environment Variables
 Make sure to set all environment variables in your deployment platform.

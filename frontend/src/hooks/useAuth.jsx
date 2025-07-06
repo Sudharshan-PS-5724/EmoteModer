@@ -14,14 +14,22 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  // Get API base URL from environment or default to localhost
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
 
-  const checkAuth = async () => {
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  const checkAuthStatus = async () => {
     try {
       const response = await fetch(`${API_BASE}/api/user`, {
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      
+
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
@@ -37,36 +45,36 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = () => {
-    window.location.href = `${API_BASE}/auth/google`;
+    // Redirect to backend OAuth endpoint
+    const currentOrigin = window.location.origin;
+    const redirectUrl = `${currentOrigin}/dashboard`;
+    const authUrl = `${API_BASE}/auth/google?redirect=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = authUrl;
   };
 
   const logout = async () => {
     try {
       await fetch(`${API_BASE}/auth/logout`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
       });
       setUser(null);
+      window.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);
+      // Force logout even if API call fails
+      setUser(null);
+      window.location.href = '/';
     }
   };
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
 
   const value = {
     user,
     loading,
     login,
     logout,
-    checkAuth
+    checkAuthStatus,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }; 

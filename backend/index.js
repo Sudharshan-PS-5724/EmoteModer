@@ -39,37 +39,146 @@ const connectMongoDB = async () => {
 // Initialize MongoDB connection
 connectMongoDB();
 
-// Create and connect Redis client
-const redisClient = createClient({ url: 'redis://localhost:6379' });
-redisClient.connect().catch(console.error);
+// Redis connection with production fallback
+let redisClient;
+const connectRedis = async () => {
+  try {
+    if (process.env.REDIS_URL) {
+      console.log('🔗 Connecting to Redis...');
+      redisClient = createClient({ 
+        url: process.env.REDIS_URL,
+        socket: {
+          reconnectStrategy: (retries) => {
+            if (retries > 10) {
+              console.error('❌ Redis connection failed after 10 retries');
+              return false;
+            }
+            return Math.min(retries * 100, 3000);
+          }
+        }
+      });
+      
+      await redisClient.connect();
+      console.log('✅ Redis connected successfully!');
+    } else {
+      console.log('⚠️  No REDIS_URL found, using in-memory session store');
+      redisClient = null;
+    }
+  } catch (error) {
+    console.error('❌ Redis connection failed:', error.message);
+    console.log('📝 Falling back to in-memory session store');
+    redisClient = null;
+  }
+};
 
-// Create RedisStore instance
-const redisStore = new RedisStore({
-  client: redisClient,
-  prefix: 'sess:',
-  ttl: 86400
-});
+// Initialize Redis connection
+connectRedis();
+
+// Create RedisStore instance or use memory store
+const sessionStore = redisClient 
+  ? new RedisStore({ 
+      client: redisClient,
+      prefix: 'sess:',
+      ttl: 86400
+    })
+  : new session.MemoryStore();
+
+// CORS configuration for production
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? [
+        'https://emote-moder.vercel.app',
+        'https://emotemoder-frontend.vercel.app',
+        'https://emotemoder-git-main.vercel.app',
+        'http://localhost:5173' // for development
+      ]
+    : ['http://localhost:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
 
 // Middleware
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}));
-app.use(express.json());
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Session configuration
 app.use(session({
-  store: redisStore,
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'fallback-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
+
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Emote Moder API is running!',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/health',
+      debug: '/debug/env',
+      oauth: '/debug/oauth',
+      auth: '/auth/google',
+      api: '/api'
+    }
+  });
+});
+
+// Simple test route
+app.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Test route working!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Debug endpoint to check environment variables
+app.get('/debug/env', (req, res) => {
+  res.json({
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    MONGO_URI: process.env.MONGO_URI ? 'set' : 'not set',
+    SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'not set',
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ? 'set' : 'not set',
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ? 'set' : 'not set',
+    GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL || 'not set',
+    PORT: process.env.PORT || 'not set',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Debug endpoint to check OAuth configuration
+app.get('/debug/oauth', (req, res) => {
+  res.json({
+    googleClientId: process.env.GOOGLE_CLIENT_ID ? 'set' : 'not set',
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ? 'set' : 'not set',
+    googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL || 'not set',
+    nodeEnv: process.env.NODE_ENV || 'development',
+    oauthTestUrl: `${process.env.GOOGLE_CALLBACK_URL || 'not set'}/auth/google`,
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
@@ -313,21 +422,6 @@ app.get('/api/stats', requireAuth, async (req, res) => {
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'MoodBoard Me API is running',
-    mongodb: {
-      connected: mongoose.connection.readyState === 1,
-      database: mongoose.connection.name,
-      host: mongoose.connection.host
-    },
-    authenticated: req.isAuthenticated(),
-    user: req.user ? req.user.displayName : null
-  });
-});
-
 // Debug endpoint to check session
 app.get('/api/debug/session', (req, res) => {
   res.json({
@@ -380,27 +474,64 @@ app.post('/api/admin/cleanup', (req, res) => {
 // Chatbot route
 app.use('/api/chatbot', chatbotRoute);
 
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('❌ Global error handler caught:', err);
+  console.error('❌ Error stack:', err.stack);
+  console.error('❌ Request URL:', req.url);
+  console.error('❌ Request method:', req.method);
+  
+  res.status(500).json({ 
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  console.log('❌ 404 Not Found:', req.url);
+  res.status(404).json({ 
+    error: 'Not Found',
+    message: `Route ${req.url} not found`,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Start the server
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  await connectMongoDB();
-  
-  // Start chat cleanup service
-  if (process.env.FIREBASE_API_KEY) {
-    const cleanupService = new ChatCleanupService();
-    cleanupService.startScheduler();
-    console.log('✅ Chat cleanup service started');
-  } else {
-    console.log('⚠️  Firebase not configured, chat cleanup disabled');
-  }
+  try {
+    console.log('🚀 Starting server...');
+    console.log('📊 Environment:', process.env.NODE_ENV || 'development');
+    console.log('🔗 MongoDB URI:', process.env.MONGO_URI ? 'Set' : 'Not set');
+    console.log('🔐 Session Secret:', process.env.SESSION_SECRET ? 'Set' : 'Not set');
+    console.log('🔑 Google Client ID:', process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not set');
+    console.log('🔑 Google Client Secret:', process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not set');
+    console.log('🔗 Google Callback URL:', process.env.GOOGLE_CALLBACK_URL || 'Not set');
+    
+    await connectMongoDB();
+    
+    // Start chat cleanup service
+    if (process.env.FIREBASE_API_KEY) {
+      const cleanupService = new ChatCleanupService();
+      cleanupService.startScheduler();
+      console.log('✅ Chat cleanup service started');
+    } else {
+      console.log('⚠️  Firebase not configured, chat cleanup disabled');
+    }
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Server listening on port ${PORT}`);
-    console.log(`🔐 OAuth endpoint: http://localhost:${PORT}/auth`);
-    console.log(`📊 API endpoints: http://localhost:${PORT}/api`);
-    console.log(`🔍 Health check: http://localhost:${PORT}/api/health`);
-  });
+    app.listen(PORT, () => {
+      console.log(`🚀 Server listening on port ${PORT}`);
+      console.log(`🔐 OAuth endpoint: http://localhost:${PORT}/auth`);
+      console.log(`📊 API endpoints: http://localhost:${PORT}/api`);
+      console.log(`🔍 Health check: http://localhost:${PORT}/health`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
 };
 
 startServer().catch(console.error);

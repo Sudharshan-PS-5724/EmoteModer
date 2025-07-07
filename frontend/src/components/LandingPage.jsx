@@ -179,7 +179,7 @@ const LandingPage = () => {
             <motion.button
               whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => window.location.href = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/auth/google`}
+              onClick={() => window.location.href = '/login'}
               className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 text-xl font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
             >
               🚀 Start Your Journey
@@ -359,7 +359,7 @@ const LandingPage = () => {
           <motion.button
             whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => window.location.href = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/auth/google`}
+            onClick={() => window.location.href = '/login'}
             className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-12 py-6 text-2xl font-bold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
           >
             🚀 Get Started Now

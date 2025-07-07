@@ -1,27 +1,47 @@
-const { initializeApp } = require('firebase/app');
-const { getFirestore, collection, query, where, getDocs, deleteDoc, doc } = require('firebase/firestore');
+// Optional Firebase import - only load if Firebase is configured
+let firebaseApp = null;
+let firestoreDb = null;
 
-// Firebase config (you'll need to add this to your .env file)
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
-};
+try {
+  if (process.env.FIREBASE_API_KEY) {
+    const { initializeApp } = require('firebase/app');
+    const { getFirestore, collection, query, where, getDocs, deleteDoc, doc } = require('firebase/firestore');
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+    // Firebase config
+    const firebaseConfig = {
+      apiKey: process.env.FIREBASE_API_KEY,
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+      appId: process.env.FIREBASE_APP_ID
+    };
+
+    // Initialize Firebase
+    firebaseApp = initializeApp(firebaseConfig);
+    firestoreDb = getFirestore(firebaseApp);
+    
+    console.log('✅ Firebase initialized for chat cleanup service');
+  } else {
+    console.log('⚠️  Firebase not configured, chat cleanup service disabled');
+  }
+} catch (error) {
+  console.log('⚠️  Firebase not available, chat cleanup service disabled');
+}
 
 class ChatCleanupService {
   constructor() {
     this.isRunning = false;
+    this.isEnabled = firestoreDb !== null;
   }
 
   // Clean up messages older than 24 hours
   async cleanupOldMessages() {
+    if (!this.isEnabled) {
+      console.log('Chat cleanup service is disabled (Firebase not configured)');
+      return;
+    }
+
     if (this.isRunning) {
       console.log('Cleanup already running, skipping...');
       return;
@@ -31,6 +51,8 @@ class ChatCleanupService {
     console.log('Starting daily chat cleanup...');
 
     try {
+      const { collection, query, where, getDocs, deleteDoc } = require('firebase/firestore');
+      
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
 
@@ -40,7 +62,7 @@ class ChatCleanupService {
       let totalDeleted = 0;
 
       for (const roomId of rooms) {
-        const messagesRef = collection(db, `chatRooms/${roomId}/messages`);
+        const messagesRef = collection(firestoreDb, `chatRooms/${roomId}/messages`);
         const q = query(messagesRef, where('timestamp', '<', yesterday));
         
         const querySnapshot = await getDocs(q);
@@ -64,7 +86,7 @@ class ChatCleanupService {
       fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
 
       for (const roomId of rooms) {
-        const typingRef = collection(db, `chatRooms/${roomId}/typing`);
+        const typingRef = collection(firestoreDb, `chatRooms/${roomId}/typing`);
         const typingQuery = query(typingRef, where('timestamp', '<', fiveMinutesAgo));
         
         const typingSnapshot = await getDocs(typingQuery);
@@ -89,6 +111,11 @@ class ChatCleanupService {
 
   // Start the cleanup scheduler
   startScheduler() {
+    if (!this.isEnabled) {
+      console.log('Chat cleanup scheduler disabled (Firebase not configured)');
+      return;
+    }
+
     // Run cleanup every day at 2 AM
     const scheduleCleanup = () => {
       const now = new Date();
@@ -118,12 +145,18 @@ class ChatCleanupService {
 
   // Check if cleanup is needed on startup
   async checkAndRunCleanup() {
+    if (!this.isEnabled) {
+      return;
+    }
+
     try {
+      const { collection, query, where, getDocs } = require('firebase/firestore');
+      
       // Check if we have any messages older than 24 hours
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const messagesRef = collection(db, 'chatRooms/happy/messages');
+      const messagesRef = collection(firestoreDb, 'chatRooms/happy/messages');
       const q = query(messagesRef, where('timestamp', '<', yesterday));
       const querySnapshot = await getDocs(q);
 
@@ -138,6 +171,11 @@ class ChatCleanupService {
 
   // Manual cleanup trigger (for testing or admin use)
   async manualCleanup() {
+    if (!this.isEnabled) {
+      console.log('Manual cleanup disabled (Firebase not configured)');
+      return;
+    }
+
     console.log('Manual cleanup triggered');
     await this.cleanupOldMessages();
   }

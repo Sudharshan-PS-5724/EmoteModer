@@ -497,13 +497,12 @@ const startServer = async () => {
     console.log('📊 Environment:', process.env.NODE_ENV || 'development');
     console.log('🔗 MongoDB URI:', process.env.MONGO_URI ? 'Set' : 'Not set');
     console.log('🔐 Session Secret:', process.env.SESSION_SECRET ? 'Set' : 'Not set');
-    console.log('🔑 Google Client ID:', process.env.GOOGLE_CLIENT_ID ? 'Set' : 'Not set');
-    console.log('🔑 Google Client Secret:', process.env.GOOGLE_CLIENT_SECRET ? 'Set' : 'Not set');
-    console.log('🔗 Google Callback URL:', process.env.GOOGLE_CALLBACK_URL || 'Not set');
+    console.log('🔑 JWT Secret:', process.env.JWT_SECRET ? 'Set' : 'Not set');
+    console.log('🔥 Firebase API Key:', process.env.FIREBASE_API_KEY ? 'Set' : 'Not set');
     
     await connectMongoDB();
     
-    // Start chat cleanup service
+    // Start chat cleanup service only if Firebase is configured
     if (process.env.FIREBASE_API_KEY) {
       const cleanupService = new ChatCleanupService();
       cleanupService.startScheduler();
@@ -514,7 +513,7 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`🚀 Server listening on port ${PORT}`);
-      console.log(`🔐 OAuth endpoint: http://localhost:${PORT}/auth`);
+      console.log(`🔐 Auth endpoints: http://localhost:${PORT}/auth`);
       console.log(`📊 API endpoints: http://localhost:${PORT}/api`);
       console.log(`🔍 Health check: http://localhost:${PORT}/health`);
     });

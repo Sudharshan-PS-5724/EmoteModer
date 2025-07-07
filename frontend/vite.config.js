@@ -9,6 +9,22 @@ export default defineConfig({
       '/api': 'http://localhost:5000',
       '/auth': 'http://localhost:5000'
     }
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          animations: ['framer-motion']
+        }
+      }
+    }
+  },
+  preview: {
+    port: 4173,
+    host: true
   }
 });
 

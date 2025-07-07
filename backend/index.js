@@ -2,15 +2,13 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const { createClient } = require('redis');
-const passport = require('passport');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { RedisStore } = require('connect-redis');
 const ChatCleanupService = require('./services/chatCleanup');
 const chatbotRoute = require('./routes/chatbot');
 const sentimentAnalysis = require('./services/sentimentAnalysis');
-
-require('./auth'); // Import passport config
+const { router: authRouter, verifyToken } = require('./routes/auth');
 
 const app = express();
 
@@ -87,7 +85,7 @@ const sessionStore = redisClient
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
     ? [
-        'https://emote-moder.vercel.app',
+        'https://emotemoder.vercel.app',
         'https://emotemoder-frontend.vercel.app',
         'https://emotemoder-git-main.vercel.app',
         'http://localhost:5173' // for development
@@ -117,9 +115,6 @@ app.use(session({
   }
 }));
 
-app.use(passport.initialize());
-app.use(passport.session());
-
 // Root route
 app.get('/', (req, res) => {
   res.json({ 
@@ -129,19 +124,9 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       debug: '/debug/env',
-      oauth: '/debug/oauth',
-      auth: '/auth/google',
+      auth: '/auth',
       api: '/api'
     }
-  });
-});
-
-// Simple test route
-app.get('/test', (req, res) => {
-  res.json({ 
-    message: 'Test route working!',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -160,48 +145,53 @@ app.get('/debug/env', (req, res) => {
     NODE_ENV: process.env.NODE_ENV || 'not set',
     MONGO_URI: process.env.MONGO_URI ? 'set' : 'not set',
     SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'not set',
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ? 'set' : 'not set',
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ? 'set' : 'not set',
-    GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL || 'not set',
+    JWT_SECRET: process.env.JWT_SECRET ? 'set' : 'not set',
     PORT: process.env.PORT || 'not set',
     timestamp: new Date().toISOString()
   });
 });
 
-// Debug endpoint to check OAuth configuration
-app.get('/debug/oauth', (req, res) => {
-  res.json({
-    googleClientId: process.env.GOOGLE_CLIENT_ID ? 'set' : 'not set',
-    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ? 'set' : 'not set',
-    googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL || 'not set',
-    nodeEnv: process.env.NODE_ENV || 'development',
-    oauthTestUrl: `${process.env.GOOGLE_CALLBACK_URL || 'not set'}/auth/google`,
-    timestamp: new Date().toISOString()
+// Simple test route
+app.get('/test', (req, res) => {
+  res.json({ 
+    message: 'Test route working!',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// Authentication middleware
-const requireAuth = (req, res, next) => {
-  if (req.isAuthenticated()) {
-    return next();
+// Authentication routes
+app.use('/auth', authRouter);
+
+// User routes with JWT authentication
+app.get('/api/user', verifyToken, async (req, res) => {
+  try {
+    const { findById } = require('./models/User');
+    const user = await findById(req.user.userId);
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      displayName: user.displayName,
+      avatar: user.avatar
+    });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user' });
   }
-  res.status(401).json({ message: 'Not authenticated' });
-};
-
-// OAuth routes
-app.use('/auth', require('./routes/auth'));
-
-// User routes
-app.get('/api/user', requireAuth, (req, res) => {
-  res.json(req.user);
 });
 
 // Mood board routes with sentiment analysis
-app.get('/api/moodboards', requireAuth, async (req, res) => {
+app.get('/api/moodboards', verifyToken, async (req, res) => {
   try {
     const { getBoardsByUser } = require('./models/MoodBoard');
     // Ensure we use the correct user identifier
-    const userId = req.user.googleId || req.user.id;
+    const userId = req.user.userId;
     console.log('User object:', req.user);
     console.log('Using userId for board retrieval:', userId);
     
@@ -226,11 +216,11 @@ app.get('/api/moodboards', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/moodboards', requireAuth, async (req, res) => {
+app.post('/api/moodboards', verifyToken, async (req, res) => {
   try {
     const { createBoard } = require('./models/MoodBoard');
     // Ensure we use the correct user identifier
-    const userId = req.user.googleId || req.user.id;
+    const userId = req.user.userId;
     console.log('User object:', req.user);
     console.log('Using userId for board creation:', userId);
     
@@ -291,7 +281,7 @@ app.get('/api/moodboards/public', async (req, res) => {
   }
 });
 
-app.get('/api/moodboards/:id', requireAuth, async (req, res) => {
+app.get('/api/moodboards/:id', verifyToken, async (req, res) => {
   try {
     const { getBoardById } = require('./models/MoodBoard');
     const board = await getBoardById(req.params.id);
@@ -300,7 +290,7 @@ app.get('/api/moodboards/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ message: 'Mood board not found' });
     }
     
-    const userId = req.user.googleId || req.user.id;
+    const userId = req.user.userId;
     if (board.userId !== userId) {
       return res.status(403).json({ message: 'Not authorized' });
     }
@@ -319,10 +309,10 @@ app.get('/api/moodboards/:id', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/moodboards/:id', requireAuth, async (req, res) => {
+app.delete('/api/moodboards/:id', verifyToken, async (req, res) => {
   try {
     const { deleteBoard } = require('./models/MoodBoard');
-    const userId = req.user.googleId || req.user.id;
+    const userId = req.user.userId;
     
     // Validate the ID parameter
     if (!req.params.id || req.params.id === 'undefined' || req.params.id === 'null') {
@@ -343,7 +333,7 @@ app.delete('/api/moodboards/:id', requireAuth, async (req, res) => {
 });
 
 // Sentiment analysis endpoint
-app.post('/api/analyze-emotion', requireAuth, async (req, res) => {
+app.post('/api/analyze-emotion', verifyToken, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) {
@@ -359,10 +349,10 @@ app.post('/api/analyze-emotion', requireAuth, async (req, res) => {
 });
 
 // Mood history endpoint
-app.get('/api/mood-history', requireAuth, async (req, res) => {
+app.get('/api/mood-history', verifyToken, async (req, res) => {
   try {
     const { getMoodHistory } = require('./models/User');
-    const userId = req.user.googleId || req.user.id;
+    const userId = req.user.userId;
     const history = await getMoodHistory(userId);
     
     res.json({ history });
@@ -373,7 +363,7 @@ app.get('/api/mood-history', requireAuth, async (req, res) => {
 });
 
 // Storage monitoring endpoint
-app.get('/api/stats', requireAuth, async (req, res) => {
+app.get('/api/stats', verifyToken, async (req, res) => {
   try {
     let stats = {
       mongodb: {

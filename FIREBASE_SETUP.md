@@ -17,8 +17,8 @@ To enable the daily chat cleanup service, you need to configure Firebase in your
 1. In Firebase Console, click the gear icon ⚙️ → "Project settings"
 2. Scroll down to "Your apps" section
 3. Click "Add app" → "Web" (</>)
-4. Register app with name: `moodboard-backend`
-5. Copy the config object
+4. Register app with name: `mood-backend`
+6. Copy the config object
 
 ### **Step 3: Add Environment Variables**
 

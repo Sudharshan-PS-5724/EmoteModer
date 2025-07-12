@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import Chatbot from './components/Chatbot';
 import CustomChatbot from './components/CustomChatbot';
 import PublicGallery from './components/PublicGallery';
+
 import './App.css';
 
 // Protected Route component
@@ -25,7 +26,13 @@ const ProtectedRoute = ({ children }) => {
     );
   }
   
-  return user ? children : <Navigate to="/login" />;
+  if (!user) {
+    console.log('No user found, redirecting to login');
+    return <Navigate to="/login" />;
+  }
+  
+  console.log('User authenticated:', user.displayName);
+  return children;
 };
 
 // Main App component with animated routes

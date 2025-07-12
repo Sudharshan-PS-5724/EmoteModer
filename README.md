@@ -41,7 +41,7 @@ A revolutionary emotion recognition platform that combines cutting-edge AI techn
 ### Prerequisites
 - Node.js (v16 or higher)
 - MongoDB Atlas account
-- Google OAuth credentials
+- JWT Secret (for authentication)
 - OpenRouter API key (for custom chatbot)
 
 ### Environment Setup
@@ -62,9 +62,8 @@ Create `.env` files in both `frontend/` and `backend/` directories:
 **Backend (.env):**
 ```env
 MONGODB_URI=your_mongodb_atlas_connection_string
-GOOGLE_CLIENT_ID=your_google_oauth_client_id
-GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
-SESSION_SECRET=your_session_secret
+JWT_SECRET=your_super_secret_jwt_key_here
+JWT_REFRESH_SECRET=your_super_secret_refresh_key_here
 HUGGING_FACE_API_KEY=your_hugging_face_api_key_optional
 ```
 
@@ -152,8 +151,8 @@ Visit `http://localhost:5173` to use the app!
 ### Backend
 - **Node.js** with Express
 - **MongoDB** with Mongoose
-- **Passport.js** for authentication
-- **Redis** for session storage
+- **JWT Authentication** for secure authentication
+- **Redis** for caching (optional)
 - **Hugging Face API** for NLP
 - **OpenRouter API** for chatbot responses
 

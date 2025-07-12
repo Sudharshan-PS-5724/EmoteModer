@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useChat } from '../hooks/useChat';
+import { useChatFallback } from '../hooks/useChatFallback';
 import { useMood } from '../context/MoodContext.jsx';
 
 const moodBgStyles = {
@@ -24,6 +25,14 @@ const moodTextStyles = {
 
 const ChatRoom = ({ roomId, roomName, roomEmoji, roomColor }) => {
   const { user } = useAuth();
+  
+  // Try Firebase first, fallback to local storage if it fails
+  const firebaseChat = useChat(roomId);
+  const fallbackChat = useChatFallback(roomId);
+  
+  // Use fallback if Firebase has an error
+  const chatHook = firebaseChat.error ? fallbackChat : firebaseChat;
+  
   const { 
     messages, 
     loading, 
@@ -35,7 +44,7 @@ const ChatRoom = ({ roomId, roomName, roomEmoji, roomColor }) => {
     typingUsers,
     isTyping,
     setIsTyping
-  } = useChat(roomId);
+  } = chatHook;
 
   const [newMessage, setNewMessage] = useState('');
   const [showMoodPicker, setShowMoodPicker] = useState(false);
@@ -113,6 +122,12 @@ const ChatRoom = ({ roomId, roomName, roomEmoji, roomColor }) => {
 
   return (
     <div className={`transition-colors duration-500 ${bgClass} ${textClass} rounded-xl shadow-lg h-[60vh] sm:h-[600px] flex flex-col`}>
+      {/* Fallback Notification */}
+      {firebaseChat.error && (
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-2 text-sm">
+          ⚠️ Using offline mode - messages will not be saved permanently
+        </div>
+      )}
       {/* Chat Header */}
       <div className={`p-3 sm:p-4 rounded-t-xl bg-gradient-to-r ${roomColor} text-white`}>
         <div className="flex items-center space-x-2 sm:space-x-3">
@@ -135,10 +150,10 @@ const ChatRoom = ({ roomId, roomName, roomEmoji, roomColor }) => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className={`flex ${message.userId === (user?.id || user?.googleId) ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${message.userId === user?.id ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-xs lg:max-w-md ${message.userId === (user?.id || user?.googleId) ? 'order-2' : 'order-1'}`}>
-                {message.userId !== (user?.id || user?.googleId) && (
+              <div className={`max-w-xs lg:max-w-md ${message.userId === user?.id ? 'order-2' : 'order-1'}`}>
+                {message.userId !== user?.id && (
                   <div className="flex items-center space-x-2 mb-1">
                     {message.userPhoto && (
                       <img
@@ -155,7 +170,7 @@ const ChatRoom = ({ roomId, roomName, roomEmoji, roomColor }) => {
                 
                 <div className={`
                   p-3 rounded-2xl shadow-sm
-                  ${message.userId === (user?.id || user?.googleId)
+                  ${message.userId === user?.id
                     ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
                     : 'bg-gray-100 text-gray-800'
                   }
@@ -163,14 +178,14 @@ const ChatRoom = ({ roomId, roomName, roomEmoji, roomColor }) => {
                 `}>
                   <div className="flex items-center justify-between">
                     <span className="text-sm">{message.text}</span>
-                    <span className={`text-xs ml-2 ${message.userId === (user?.id || user?.googleId) ? 'text-white/70' : 'text-gray-500'}`}>
+                    <span className={`text-xs ml-2 ${message.userId === user?.id ? 'text-white/70' : 'text-gray-500'}`}>
                       {formatTime(message.timestamp)}
                     </span>
                   </div>
                   
-                  {message.userId === (user?.id || user?.googleId) && (
+                  {message.userId === user?.id && (
                     <button
-                      onClick={() => deleteMessage(message.id, user?.id || user?.googleId)}
+                      onClick={() => deleteMessage(message.id, user?.id)}
                       className="text-xs opacity-70 hover:opacity-100 mt-1"
                     >
                       Delete

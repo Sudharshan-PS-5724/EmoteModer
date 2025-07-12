@@ -1,29 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { motion, useScroll, useTransform } from 'framer-motion';
+import { motion, useScroll, useTransform, AnimatePresence } from 'framer-motion';
 import { useRef } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useMoodBoards } from '../hooks/useMoodBoards';
 import { useMood } from '../context/MoodContext.jsx';
 
-// Floating Emoji Particle Component
-const FloatingEmoji = ({ emoji, delay, duration, x, y }) => {
+// UI Element Pop-up Emoji Component
+const PopupEmoji = ({ emoji, x, y, delay, onComplete }) => {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0 }}
+      initial={{ opacity: 0, scale: 0, y: 0 }}
       animate={{ 
         opacity: [0, 1, 0],
-        scale: [0, 1, 0],
-        y: [y, y - 100, y - 200],
-        x: [x, x + Math.random() * 50 - 25, x + Math.random() * 100 - 50]
+        scale: [0, 1.2, 0],
+        y: [0, -30, -60]
       }}
       transition={{
-        duration: duration,
+        duration: 1.5,
         delay: delay,
-        repeat: Infinity,
-        ease: "easeInOut"
+        ease: "easeOut"
       }}
-      className="absolute pointer-events-none text-xl sm:text-2xl md:text-3xl z-0"
-      style={{ left: x, top: y }}
+      onAnimationComplete={onComplete}
+      className="absolute pointer-events-none z-50"
+      style={{ 
+        left: x, 
+        top: y,
+        fontSize: '24px',
+        filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.8))'
+      }}
     >
       {emoji}
     </motion.div>
@@ -34,7 +38,7 @@ const Dashboard = () => {
   const { user } = useAuth();
   const { boards, loading, error, createBoard, deleteBoard } = useMoodBoards();
   const { currentMood, setCurrentMood, moodList, moodHistory, getCurrentMoodFont, addMoodToHistory } = useMood();
-  const [particles, setParticles] = useState([]);
+  const [popupEmojis, setPopupEmojis] = useState([]);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
@@ -46,28 +50,69 @@ const Dashboard = () => {
 
   const dashboardRef = useRef(null);
   const { scrollY } = useScroll({ container: dashboardRef });
-  const y1 = useTransform(scrollY, [0, 600], [0, 100]);
-  const y2 = useTransform(scrollY, [0, 600], [0, -80]);
-  const y3 = useTransform(scrollY, [0, 600], [0, 60]);
+  
+  // Awwards-style scroll animations
+  const headerY = useTransform(scrollY, [0, 300], [0, -100]);
+  const headerScale = useTransform(scrollY, [0, 300], [1, 0.8]);
+  const statsY = useTransform(scrollY, [0, 400], [0, -50]);
+  const boardsY = useTransform(scrollY, [0, 500], [0, -30]);
+  const opacity = useTransform(scrollY, [0, 200], [1, 0.3]);
 
-  // Generate floating emoji particles
+  // Generate popup emojis within UI elements
   useEffect(() => {
     const emojis = ['😊', '😢', '😠', '😨', '🤢', '😲'];
-    const newParticles = [];
     
-    for (let i = 0; i < 30; i++) {
-      newParticles.push({
-        id: i,
-        emoji: emojis[Math.floor(Math.random() * emojis.length)],
-        x: Math.random() * (window.innerWidth || 1200),
-        y: Math.random() * (window.innerHeight || 800),
-        delay: Math.random() * 5,
-        duration: 8 + Math.random() * 4
-      });
-    }
+    const createPopupEmoji = () => {
+      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+      const id = Date.now() + Math.random();
+      
+      // Random position within the dashboard area
+      const x = Math.random() * (window.innerWidth * 0.8) + (window.innerWidth * 0.1);
+      const y = Math.random() * (window.innerHeight * 0.7) + (window.innerHeight * 0.15);
+      
+      const newEmoji = {
+        id,
+        emoji,
+        x,
+        y,
+        delay: 0
+      };
+      
+      setPopupEmojis(prev => [...prev, newEmoji]);
+      
+      // Remove emoji after animation
+      setTimeout(() => {
+        setPopupEmojis(prev => prev.filter(e => e.id !== id));
+      }, 1500);
+    };
+
+    // Create emojis at random intervals
+    const interval = setInterval(createPopupEmoji, 200);
     
-    setParticles(newParticles);
+    return () => clearInterval(interval);
   }, []);
+
+  // Create emoji on hover for interactive elements
+  const createHoverEmoji = (event, emoji = '✨') => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const id = Date.now() + Math.random();
+    
+    const newEmoji = {
+      id,
+      emoji,
+      x: rect.left + x,
+      y: rect.top + y,
+      delay: 0
+    };
+    
+    setPopupEmojis(prev => [...prev, newEmoji]);
+    
+    setTimeout(() => {
+      setPopupEmojis(prev => prev.filter(e => e.id !== id));
+    }, 1500);
+  };
 
   const getMoodEmoji = (mood) => {
     const emojis = {
@@ -105,18 +150,6 @@ const Dashboard = () => {
     return gradients[mood] || 'from-yellow-50 via-orange-50 to-yellow-100';
   };
 
-  const getMoodTextColor = (mood) => {
-    const colors = {
-      happy: 'text-yellow-800',
-      sad: 'text-blue-800',
-      angry: 'text-red-800',
-      fear: 'text-gray-800',
-      disgust: 'text-green-800',
-      surprise: 'text-pink-800'
-    };
-    return colors[mood] || 'text-yellow-800';
-  };
-
   const getMoodBorderColor = (mood) => {
     const colors = {
       happy: 'border-yellow-200',
@@ -146,7 +179,6 @@ const Dashboard = () => {
     try {
       const newBoard = await createBoard(formData);
       
-      // Update mood history with the created board's mood
       if (newBoard && newBoard.mood) {
         addMoodToHistory(newBoard.mood, 0.8);
         setCurrentMood(newBoard.mood);
@@ -180,9 +212,9 @@ const Dashboard = () => {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-2xl font-semibold text-gray-700 font-poppins"
+          className="text-4xl font-black text-gray-700 font-mango tracking-wider"
         >
-          Loading your mood boards...
+          LOADING...
         </motion.div>
       </div>
     );
@@ -191,7 +223,7 @@ const Dashboard = () => {
   if (error) {
     return (
       <div className={`min-h-screen bg-gradient-to-br ${getMoodBgGradient(currentMood)} flex items-center justify-center`}>
-        <div className="text-red-600 text-xl font-poppins">Error: {error}</div>
+        <div className="text-red-600 text-2xl font-black font-mango">ERROR: {error}</div>
       </div>
     );
   }
@@ -199,258 +231,306 @@ const Dashboard = () => {
   return (
     <div 
       ref={dashboardRef} 
-      className={`min-h-screen relative overflow-x-hidden bg-gradient-to-br ${getMoodBgGradient(currentMood)} transition-all duration-1000`}
+      className={`min-h-screen relative overflow-hidden bg-gradient-to-br ${getMoodBgGradient(currentMood)} transition-all duration-1000`}
     >
-      {/* Floating Emoji Particles */}
-      {particles.map(particle => (
-        <FloatingEmoji
-          key={particle.id}
-          emoji={particle.emoji}
-          delay={particle.delay}
-          duration={particle.duration}
-          x={particle.x}
-          y={particle.y}
-        />
-      ))}
+      {/* Popup Emojis Overlay */}
+      <AnimatePresence>
+        {popupEmojis.map(emoji => (
+          <PopupEmoji
+            key={emoji.id}
+            emoji={emoji.emoji}
+            x={emoji.x}
+            y={emoji.y}
+            delay={emoji.delay}
+          />
+        ))}
+      </AnimatePresence>
 
-      {/* Parallax Animated Background */}
+      {/* Subtle Gradient Orbs */}
       <motion.div 
-        style={{ y: y1 }} 
-        className={`absolute top-20 left-20 w-32 h-32 bg-gradient-to-r ${getMoodGradient(currentMood)} rounded-full blur-xl z-0 opacity-30 transition-all duration-1000`} 
+        style={{ y: headerY, scale: headerScale, opacity }} 
+        className={`absolute top-20 left-20 w-32 h-32 bg-gradient-to-r ${getMoodGradient(currentMood)} rounded-full blur-2xl z-0 opacity-20 transition-all duration-1000`} 
       />
       <motion.div 
-        style={{ y: y2 }} 
-        className={`absolute top-40 right-20 w-24 h-24 bg-gradient-to-r ${getMoodGradient(currentMood)} rounded-full blur-xl z-0 opacity-30 transition-all duration-1000`} 
-      />
-      <motion.div 
-        style={{ y: y3 }} 
-        className={`absolute bottom-20 left-1/3 w-40 h-40 bg-gradient-to-r ${getMoodGradient(currentMood)} rounded-full blur-xl z-0 opacity-30 transition-all duration-1000`} 
+        style={{ y: headerY, scale: headerScale, opacity }} 
+        className={`absolute top-40 right-20 w-24 h-24 bg-gradient-to-r ${getMoodGradient(currentMood)} rounded-full blur-2xl z-0 opacity-20 transition-all duration-1000`} 
       />
 
-      <div className="max-w-7xl mx-auto px-4 py-8 relative z-10">
-        {/* Header Section */}
+      <div className="max-w-7xl mx-auto px-8 py-16 relative z-10">
+        {/* Awwards-style Header Section */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
+          initial={{ opacity: 0, y: 100 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="text-center mb-12"
+          transition={{ duration: 1, type: "spring", bounce: 0.3 }}
+          className="text-center mb-24"
         >
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ duration: 1, type: "spring" }}
-            className="mb-6"
+          <div className="flex items-center justify-center mb-12">
+            <motion.img 
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ duration: 1, type: "spring" }}
+              src="/mirror_alter_ego.png" 
+              alt="Mirror Alter Ego" 
+              className="w-20 h-20 mr-8 rounded-full object-cover shadow-2xl"
+            />
+            <motion.img 
+              initial={{ scale: 0, rotate: 180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ duration: 1, type: "spring", delay: 0.2 }}
+              src="/black_ghost.png" 
+              alt="Black Ghost" 
+              className="w-20 h-20 ml-8 rounded-full object-cover shadow-2xl"
+            />
+          </div>
+          
+          <motion.h1 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.8 }}
+            className="text-6xl sm:text-8xl md:text-9xl font-black text-gray-800 mb-8 font-mango tracking-tight leading-none"
           >
-            <div className="text-6xl sm:text-7xl mb-4">🎭</div>
+            WELCOME BACK,<br />
+            <span className={`bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent`}>
+              {user?.displayName?.split(' ')[0]?.toUpperCase() || 'FRIEND'}
+            </span>
+          </motion.h1>
+          
+          <motion.p 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.6 }}
+            className="text-2xl sm:text-3xl text-gray-600 max-w-4xl mx-auto font-bold font-mango tracking-wide"
+          >
+            EXPRESS YOUR EMOTIONS THROUGH BEAUTIFUL MOOD BOARDS
+          </motion.p>
+        </motion.div>
+
+        {/* Awwards-style Stats Grid */}
+        <motion.div
+          initial={{ opacity: 0, y: 80 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1, duration: 0.8 }}
+          style={{ y: statsY }}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-24"
+        >
+          <motion.div 
+            whileHover={{ scale: 1.05, y: -10 }}
+            onHoverStart={(e) => createHoverEmoji(e, '📊')}
+            className="bg-white/90 backdrop-blur-xl rounded-3xl p-8 text-center border-2 border-gray-100 shadow-2xl hover:shadow-3xl transition-all duration-500 relative"
+          >
+            <div className="text-5xl sm:text-6xl font-black text-gray-800 font-mango mb-4">{boards.length}</div>
+            <div className="text-xl font-bold text-gray-600 font-mango tracking-wide">MOOD BOARDS</div>
           </motion.div>
-
-          <h1 
-            className={`text-4xl sm:text-6xl md:text-7xl font-bold mb-6 bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent font-montserrat tracking-wider transition-all duration-1000`}
+          
+          <motion.div 
+            whileHover={{ scale: 1.05, y: -10 }}
+            onHoverStart={(e) => createHoverEmoji(e, '📈')}
+            className="bg-white/90 backdrop-blur-xl rounded-3xl p-8 text-center border-2 border-gray-100 shadow-2xl hover:shadow-3xl transition-all duration-500 relative"
           >
-            WELCOME BACK, {user?.displayName?.split(' ')[0].toUpperCase()|| 'Friend'}! 👋
-          </h1>
-          <p className="text-xl sm:text-2xl text-gray-600 max-w-3xl mx-auto font-light font-poppins">
-            Express your emotions through beautiful mood boards and track your emotional journey
-          </p>
+            <div className="text-5xl sm:text-6xl font-black text-gray-800 font-mango mb-4">{moodHistory.length}</div>
+            <div className="text-xl font-bold text-gray-600 font-mango tracking-wide">MOOD ENTRIES</div>
+          </motion.div>
+          
+          <motion.div 
+            whileHover={{ scale: 1.05, y: -10 }}
+            onHoverStart={(e) => createHoverEmoji(e, '🌍')}
+            className="bg-white/90 backdrop-blur-xl rounded-3xl p-8 text-center border-2 border-gray-100 shadow-2xl hover:shadow-3xl transition-all duration-500 relative"
+          >
+            <div className="text-5xl sm:text-6xl font-black text-gray-800 font-mango mb-4">{boards.filter(b => b.isPublic).length}</div>
+            <div className="text-xl font-bold text-gray-600 font-mango tracking-wide">PUBLIC BOARDS</div>
+          </motion.div>
         </motion.div>
 
-        {/* Quick Stats */}
+        {/* Awwards-style Mood Switcher */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
+          initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12"
+          transition={{ delay: 1.2, duration: 0.8 }}
+          className="flex justify-center mb-24"
         >
-          <div className={`bg-white/90 backdrop-blur-sm rounded-2xl p-6 text-center shadow-lg hover:shadow-xl transition-all duration-300 border ${getMoodBorderColor(currentMood)} ${getMoodShadowColor(currentMood)}`}>
-            <div className={`text-3xl sm:text-4xl font-bold bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent font-montserrat`}>{boards.length}</div>
-            <div className="text-gray-600 font-medium font-poppins">Mood Boards</div>
-          </div>
-          <div className={`bg-white/90 backdrop-blur-sm rounded-2xl p-6 text-center shadow-lg hover:shadow-xl transition-all duration-300 border ${getMoodBorderColor(currentMood)} ${getMoodShadowColor(currentMood)}`}>
-            <div className={`text-3xl sm:text-4xl font-bold bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent font-montserrat`}>{moodHistory.length}</div>
-            <div className="text-gray-600 font-medium font-poppins">Mood Entries</div>
-          </div>
-          <div className={`bg-white/90 backdrop-blur-sm rounded-2xl p-6 text-center shadow-lg hover:shadow-xl transition-all duration-300 border ${getMoodBorderColor(currentMood)} ${getMoodShadowColor(currentMood)}`}>
-            <div className={`text-3xl sm:text-4xl font-bold bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent font-montserrat`}>{boards.filter(b => b.isPublic).length}</div>
-            <div className="text-gray-600 font-medium font-poppins">Public Boards</div>
-          </div>
-        </motion.div>
-
-        {/* Mood Switcher */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="flex justify-center mb-12"
-        >
-          <div className={`bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-lg border ${getMoodBorderColor(currentMood)} ${getMoodShadowColor(currentMood)}`}>
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6 text-center font-montserrat tracking-wide">How are you feeling?</h3>
-            <div className="flex gap-3 flex-wrap justify-center">
+          <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-10 border-2 border-gray-100 shadow-2xl relative">
+            <h3 className="text-3xl font-black text-gray-800 mb-8 text-center font-mango tracking-wide">HOW ARE YOU FEELING?</h3>
+            <div className="flex gap-4 flex-wrap justify-center">
               {moodList.map((mood) => (
                 <motion.button
                   key={mood}
-                  whileHover={{ scale: 1.1, y: -5 }}
+                  whileHover={{ scale: 1.1, y: -8, rotate: 5 }}
                   whileTap={{ scale: 0.95 }}
+                  onHoverStart={(e) => createHoverEmoji(e, getMoodEmoji(mood))}
                   onClick={() => setCurrentMood(mood)}
-                  className={`px-4 py-3 rounded-xl text-sm sm:text-base font-medium transition-all duration-300 font-poppins ${
+                  className={`px-8 py-4 rounded-2xl text-lg font-black transition-all duration-300 font-mango tracking-wide relative ${
                     currentMood === mood
-                      ? `bg-gradient-to-r ${getMoodGradient(mood)} text-white shadow-lg scale-110`
+                      ? `bg-gradient-to-r ${getMoodGradient(mood)} text-white shadow-2xl scale-110`
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105'
                   }`}
                 >
-                  {getMoodEmoji(mood)} {mood.charAt(0).toUpperCase() + mood.slice(1)}
+                  <span className="text-2xl mr-2">{getMoodEmoji(mood)}</span>
+                  {mood.toUpperCase()}
                 </motion.button>
               ))}
             </div>
           </div>
         </motion.div>
 
-        {/* Create Board Section */}
+        {/* Awwards-style Create Board Section */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
+          initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="text-center mb-12"
+          transition={{ delay: 1.4, duration: 0.8 }}
+          className="text-center mb-24"
         >
           <motion.button
-            whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
+            whileHover={{ scale: 1.05, boxShadow: "0 25px 50px rgba(0,0,0,0.2)" }}
             whileTap={{ scale: 0.95 }}
+            onHoverStart={(e) => createHoverEmoji(e, '✨')}
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className={`bg-gradient-to-r ${getMoodGradient(currentMood)} text-white px-8 py-4 text-xl font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300 font-montserrat tracking-wide`}
+            className={`bg-gradient-to-r ${getMoodGradient(currentMood)} text-white px-12 py-6 text-2xl font-black rounded-3xl shadow-2xl hover:shadow-3xl transition-all duration-500 font-mango tracking-wide relative`}
           >
-            {showCreateForm ? 'Cancel' : '✨ Create New Mood Board'}
+            {showCreateForm ? 'CANCEL' : '✨ CREATE NEW MOOD BOARD'}
           </motion.button>
         </motion.div>
 
-        {/* Create Form */}
-        {showCreateForm && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-w-md mx-auto mb-12"
-          >
-            <form onSubmit={handleCreateBoard} className={`bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg p-8 border ${getMoodBorderColor(currentMood)} ${getMoodShadowColor(currentMood)}`}>
-              <h3 className="text-2xl font-bold text-gray-800 mb-6 text-center font-montserrat tracking-wide">Create Your Mood Board</h3>
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-2 font-poppins">Title</label>
-                  <input
-                    type="text"
-                    value={formData.title}
-                    onChange={e => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg font-poppins"
-                    placeholder="My Happy Place"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-2 font-poppins">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={e => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg font-poppins"
-                    rows={3}
-                    placeholder="What's on your mind?"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-700 font-semibold mb-2 font-poppins">Initial Mood</label>
-                  <select
-                    value={formData.mood}
-                    onChange={e => setFormData({ ...formData, mood: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-lg font-poppins"
+        {/* Awwards-style Create Form */}
+        <AnimatePresence>
+          {showCreateForm && (
+            <motion.div
+              initial={{ opacity: 0, y: 40, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 40, scale: 0.9 }}
+              className="max-w-2xl mx-auto mb-24"
+            >
+              <form onSubmit={handleCreateBoard} className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-12 border-2 border-gray-100 relative">
+                <h3 className="text-3xl font-black text-gray-800 mb-8 text-center font-mango tracking-wide">CREATE YOUR MOOD BOARD</h3>
+                <div className="space-y-8">
+                  <div>
+                    <label className="block text-gray-700 font-black mb-4 font-mango text-lg tracking-wide">TITLE</label>
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={e => setFormData({ ...formData, title: e.target.value })}
+                      className="w-full px-6 py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-purple-500 focus:border-transparent text-xl font-bold font-mango"
+                      placeholder="MY HAPPY PLACE"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-black mb-4 font-mango text-lg tracking-wide">DESCRIPTION</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={e => setFormData({ ...formData, description: e.target.value })}
+                      className="w-full px-6 py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-purple-500 focus:border-transparent text-xl font-bold font-mango"
+                      rows={4}
+                      placeholder="WHAT'S ON YOUR MIND?"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 font-black mb-4 font-mango text-lg tracking-wide">INITIAL MOOD</label>
+                    <select
+                      value={formData.mood}
+                      onChange={e => setFormData({ ...formData, mood: e.target.value })}
+                      className="w-full px-6 py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-purple-500 focus:border-transparent text-xl font-bold font-mango"
+                    >
+                      {moodList.map(mood => (
+                        <option key={mood} value={mood}>
+                          {getMoodEmoji(mood)} {mood.toUpperCase()}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="checkbox"
+                      id="isPublic"
+                      checked={formData.isPublic}
+                      onChange={e => setFormData({ ...formData, isPublic: e.target.checked })}
+                      className="h-6 w-6 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="isPublic" className="text-gray-700 font-black font-mango text-lg tracking-wide">MAKE THIS BOARD PUBLIC</label>
+                  </div>
+                  <button 
+                    type="submit" 
+                    className={`w-full bg-gradient-to-r ${getMoodGradient(currentMood)} text-white py-6 px-8 rounded-2xl font-black text-xl hover:shadow-2xl transition-all duration-500 font-mango tracking-wide`}
                   >
-                    {moodList.map(mood => (
-                      <option key={mood} value={mood}>
-                        {getMoodEmoji(mood)} {mood.charAt(0).toUpperCase() + mood.slice(1)}
-                      </option>
-                    ))}
-                  </select>
+                    CREATE BOARD
+                  </button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    id="isPublic"
-                    checked={formData.isPublic}
-                    onChange={e => setFormData({ ...formData, isPublic: e.target.checked })}
-                    className="h-5 w-5 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="isPublic" className="text-gray-700 text-lg font-poppins">Make this board public</label>
-                </div>
-                <button 
-                  type="submit" 
-                  className={`w-full bg-gradient-to-r ${getMoodGradient(currentMood)} text-white py-4 px-6 rounded-xl font-semibold text-lg hover:shadow-xl transition-all duration-300 font-montserrat tracking-wide`}
-                >
-                  Create Board
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        )}
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Mood Boards Grid */}
+        {/* Awwards-style Mood Boards Grid */}
         <motion.div
-          initial={{ opacity: 0, y: 40 }}
+          initial={{ opacity: 0, y: 80 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 1.6, duration: 0.8 }}
+          style={{ y: boardsY }}
         >
-          <h2 className={`text-3xl sm:text-4xl font-bold text-center mb-12 bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent font-montserrat tracking-wide transition-all duration-1000`}>
-            Your Mood Boards ({boards.length})
+          <h2 className={`text-4xl sm:text-5xl font-black text-center mb-16 bg-gradient-to-r ${getMoodGradient(currentMood)} bg-clip-text text-transparent font-mango tracking-wide transition-all duration-1000`}>
+            YOUR MOOD BOARDS ({boards.length})
           </h2>
           {boards.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="text-8xl mb-6">🎭</div>
-              <h3 className="text-3xl font-bold text-gray-700 mb-4 font-montserrat tracking-wide">
-                No mood boards yet
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center py-24"
+            >
+              <div className="text-9xl mb-8">🎭</div>
+              <h3 className="text-4xl font-black text-gray-700 mb-6 font-mango tracking-wide">
+                NO MOOD BOARDS YET
               </h3>
-              <p className="text-gray-500 text-xl max-w-md mx-auto font-poppins">
-                Create your first mood board to start expressing your feelings and emotions!
+              <p className="text-xl text-gray-500 max-w-2xl mx-auto font-bold font-mango tracking-wide">
+                CREATE YOUR FIRST MOOD BOARD TO START EXPRESSING YOUR FEELINGS AND EMOTIONS!
               </p>
-            </div>
+            </motion.div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {boards.map((board, index) => (
                 <motion.div
                   key={board._id || board.id || index}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 * index }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className={`bg-white/95 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden border ${getMoodBorderColor(board.detectedEmotion || board.mood)} ${getMoodShadowColor(board.detectedEmotion || board.mood)} hover:shadow-xl transition-all duration-300`}
+                  initial={{ opacity: 0, y: 60, scale: 0.8 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ delay: 0.1 * index, duration: 0.6 }}
+                  whileHover={{ scale: 1.05, y: -15, rotate: 2 }}
+                  onHoverStart={(e) => createHoverEmoji(e, getMoodEmoji(board.detectedEmotion || board.mood))}
+                  className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border-2 border-gray-100 hover:shadow-3xl transition-all duration-500 relative"
                 >
-                  <div className={`h-2 bg-gradient-to-r ${getMoodGradient(board.detectedEmotion || board.mood)}`}></div>
-                  <div className="p-6 sm:p-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-xl sm:text-2xl font-bold text-gray-800 font-montserrat tracking-wide">{board.title}</h3>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r ${getMoodGradient(board.detectedEmotion || board.mood)} text-white font-poppins`}>
-                          {getMoodEmoji(board.detectedEmotion || board.mood)} {board.detectedEmotion || board.mood}
+                  <div className={`h-3 bg-gradient-to-r ${getMoodGradient(board.detectedEmotion || board.mood)}`}></div>
+                  <div className="p-8">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-2xl font-black text-gray-800 font-mango tracking-wide">{board.title}</h3>
+                      <div className="flex items-center space-x-3">
+                        <span className={`px-4 py-2 rounded-full text-sm font-black bg-gradient-to-r ${getMoodGradient(board.detectedEmotion || board.mood)} text-white font-mango tracking-wide`}>
+                          <span className="text-lg mr-2">{getMoodEmoji(board.detectedEmotion || board.mood)}</span>
+                          {board.detectedEmotion || board.mood}
                         </span>
                         {board.isPublic && (
-                          <span className="px-2 py-1 text-xs rounded bg-purple-500 text-white font-poppins">Public</span>
+                          <span className="px-3 py-2 text-xs rounded-full bg-purple-500 text-white font-black font-mango tracking-wide">PUBLIC</span>
                         )}
                       </div>
                     </div>
                     {board.description && (
-                      <p className="text-gray-600 mb-4 text-lg font-poppins">{board.description}</p>
+                      <p className="text-gray-600 mb-6 text-lg font-bold font-mango tracking-wide">{board.description}</p>
                     )}
                     {board.detectedEmotion && board.emotionConfidence && (
-                      <div className="mb-4 p-4 bg-blue-50 rounded-xl">
-                        <p className="text-sm text-blue-800 font-poppins">
-                          <strong>AI Detected:</strong> {board.detectedEmotion} 
+                      <div className="mb-6 p-4 bg-blue-50 rounded-2xl border-2 border-blue-100">
+                        <p className="text-sm text-blue-800 font-black font-mango tracking-wide">
+                          <strong>AI DETECTED:</strong> {board.detectedEmotion} 
                           <span className="ml-2 text-blue-600">
-                            ({(board.emotionConfidence * 100).toFixed(1)}% confidence)
+                            ({(board.emotionConfidence * 100).toFixed(1)}% CONFIDENCE)
                           </span>
                         </p>
                       </div>
                     )}
-                    <div className="flex items-center justify-between text-sm text-gray-500 mb-6 font-poppins">
-                      <span>{board.items && Array.isArray(board.items) ? board.items.length : 0} items</span>
-                      <span>{board.createdAt ? new Date(board.createdAt).toLocaleDateString() : 'Just now'}</span>
+                    <div className="flex items-center justify-between text-sm text-gray-500 mb-6 font-bold font-mango tracking-wide">
+                      <span>{board.items && Array.isArray(board.items) ? board.items.length : 0} ITEMS</span>
+                      <span>{board.createdAt ? new Date(board.createdAt).toLocaleDateString() : 'JUST NOW'}</span>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-4">
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
+                        onHoverStart={(e) => createHoverEmoji(e, '🗑️')}
                         onClick={() => {
                           const boardId = board._id || board.id;
                           if (boardId) {
@@ -459,9 +539,9 @@ const Dashboard = () => {
                             console.error('No valid board ID found:', board);
                           }
                         }}
-                        className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl text-sm font-medium transition-colors font-poppins"
+                        className="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl text-sm font-black transition-colors font-mango tracking-wide"
                       >
-                        Delete
+                        DELETE
                       </motion.button>
                     </div>
                   </div>

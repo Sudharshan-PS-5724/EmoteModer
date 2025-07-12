@@ -10,6 +10,7 @@ import {
   where,
   doc,
   updateDoc,
+  setDoc,
   deleteDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -28,9 +29,9 @@ export const useChat = (roomId = 'happy') => {
     try {
       const messageData = {
         text: text.trim(),
-        userId: user.id || user.googleId,
+        userId: user.id,
         userName: user.displayName,
-        userPhoto: user.photo,
+        userPhoto: user.avatar || null,
         timestamp: serverTimestamp(),
         type: 'text'
       };
@@ -59,9 +60,9 @@ export const useChat = (roomId = 'happy') => {
 
       const messageData = {
         text: `I'm feeling ${mood} today! ${moodEmojis[mood]}`,
-        userId: user.id || user.googleId,
+        userId: user.id,
         userName: user.displayName,
-        userPhoto: user.photo,
+        userPhoto: user.avatar || null,
         timestamp: serverTimestamp(),
         type: 'mood',
         mood: mood
@@ -93,12 +94,13 @@ export const useChat = (roomId = 'happy') => {
     if (!roomId) return;
 
     try {
-      const typingRef = doc(db, `chatRooms/${roomId}/typing`, user.id || user.googleId);
+      const typingRef = doc(db, `chatRooms/${roomId}/typing`, user.id);
       
       if (isTyping) {
-        await updateDoc(typingRef, {
-          userId: user.id || user.googleId,
+        await setDoc(typingRef, {
+          userId: user.id,
           userName: user.displayName,
+          userPhoto: user.avatar || null,
           timestamp: serverTimestamp()
         });
       } else {

@@ -7,18 +7,31 @@ export const useMoodBoards = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('accessToken');
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
+  };
+
   const fetchBoards = async () => {
     setLoading(true);
     setError(null);
     
     try {
       const response = await fetch(`${API_BASE}/api/moodboards`, {
-        credentials: 'include'
+        headers: getAuthHeaders()
       });
       
       if (response.ok) {
         const data = await response.json();
         setBoards(data);
+      } else if (response.status === 401) {
+        // Handle token expiration
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        throw new Error('Authentication required');
       } else {
         throw new Error('Failed to fetch mood boards');
       }
@@ -37,10 +50,7 @@ export const useMoodBoards = () => {
     try {
       const response = await fetch(`${API_BASE}/api/moodboards`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+        headers: getAuthHeaders(),
         body: JSON.stringify(boardData)
       });
       
@@ -48,6 +58,11 @@ export const useMoodBoards = () => {
         const newBoard = await response.json();
         setBoards(prev => [...prev, newBoard]);
         return newBoard;
+      } else if (response.status === 401) {
+        // Handle token expiration
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        throw new Error('Authentication required');
       } else {
         throw new Error('Failed to create mood board');
       }
@@ -72,7 +87,7 @@ export const useMoodBoards = () => {
     try {
       const response = await fetch(`${API_BASE}/api/moodboards/${boardId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        headers: getAuthHeaders()
       });
       
       if (response.ok) {
@@ -82,6 +97,11 @@ export const useMoodBoards = () => {
           return boardIdToCheck !== boardId;
         }));
         return true;
+      } else if (response.status === 401) {
+        // Handle token expiration
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        throw new Error('Authentication required');
       } else {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || 'Failed to delete mood board');
@@ -101,11 +121,16 @@ export const useMoodBoards = () => {
     
     try {
       const response = await fetch(`${API_BASE}/api/moodboards/${boardId}`, {
-        credentials: 'include'
+        headers: getAuthHeaders()
       });
       
       if (response.ok) {
         return await response.json();
+      } else if (response.status === 401) {
+        // Handle token expiration
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        throw new Error('Authentication required');
       } else {
         throw new Error('Failed to fetch mood board');
       }

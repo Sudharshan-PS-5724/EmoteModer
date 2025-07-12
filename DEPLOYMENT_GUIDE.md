@@ -124,12 +124,19 @@ VITE_API_BASE=https://your-backend-url.onrender.com
 
 ## 🔧 Step 4: Production Configuration
 
-### **4.1 Update Google OAuth**
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Add your production URLs to authorized redirect URIs:
+### **4.1 JWT Authentication Setup**
+1. Generate strong JWT secrets for production:
+   ```bash
+   # Generate JWT secret (32+ characters)
+   openssl rand -base64 32
+   
+   # Generate refresh token secret
+   openssl rand -base64 32
    ```
-   https://emotemoder.vercel.app/auth/google/callback
-   https://emotemoder-frontend.vercel.app/auth/google/callback
+2. Add the secrets to your backend environment variables:
+   ```env
+   JWT_SECRET=your_generated_jwt_secret_here
+   JWT_REFRESH_SECRET=your_generated_refresh_secret_here
    ```
 
 ### **4.2 Update CORS Settings**
@@ -202,10 +209,11 @@ curl https://emotemoder-backend.onrender.com/api/health
 
 ### **Environment Variable Checklist**
 - [ ] `MONGO_URI` - MongoDB connection string
-- [ ] `SESSION_SECRET` - Session encryption key
+- [ ] `JWT_SECRET` - JWT encryption key
+- [ ] `JWT_REFRESH_SECRET` - Refresh token encryption key
 - [ ] `OPENROUTER_API_KEY` - AI API key
 - [ ] `HUGGINGFACE_API_KEY` - Sentiment analysis key
-- [ ] `REDIS_URL` - Redis connection string
+- [ ] `REDIS_URL` - Redis connection string (optional)
 - [ ] `NODE_ENV=production`
 - [ ] `VITE_API_BASE` - Backend URL (frontend only)
 
@@ -258,7 +266,7 @@ curl https://emotemoder-backend.onrender.com/api/health
 
 ### **9.1 Final Checklist**
 - [ ] All environment variables set
-- [ ] Google OAuth configured
+- [ ] JWT secrets configured
 - [ ] CORS settings updated
 - [ ] Health checks passing
 - [ ] SSL certificates active

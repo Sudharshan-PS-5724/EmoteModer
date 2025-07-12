@@ -1,10 +1,8 @@
 require('dotenv').config();
 const express = require('express');
-const session = require('express-session');
 const { createClient } = require('redis');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const { RedisStore } = require('connect-redis');
 const ChatCleanupService = require('./services/chatCleanup');
 const chatbotRoute = require('./routes/chatbot');
 const sentimentAnalysis = require('./services/sentimentAnalysis');
@@ -37,7 +35,7 @@ const connectMongoDB = async () => {
 // Initialize MongoDB connection
 connectMongoDB();
 
-// Redis connection with production fallback
+// Redis connection for caching (optional)
 let redisClient;
 const connectRedis = async () => {
   try {
@@ -59,27 +57,18 @@ const connectRedis = async () => {
       await redisClient.connect();
       console.log('✅ Redis connected successfully!');
     } else {
-      console.log('⚠️  No REDIS_URL found, using in-memory session store');
+      console.log('⚠️  No REDIS_URL found, Redis caching disabled');
       redisClient = null;
     }
   } catch (error) {
     console.error('❌ Redis connection failed:', error.message);
-    console.log('📝 Falling back to in-memory session store');
+    console.log('📝 Redis caching disabled');
     redisClient = null;
   }
 };
 
 // Initialize Redis connection
 connectRedis();
-
-// Create RedisStore instance or use memory store
-const sessionStore = redisClient 
-  ? new RedisStore({ 
-      client: redisClient,
-      prefix: 'sess:',
-      ttl: 86400
-    })
-  : new session.MemoryStore();
 
 // CORS configuration for production
 const corsOptions = {
@@ -100,20 +89,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Session configuration
-app.use(session({
-  store: sessionStore,
-  secret: process.env.SESSION_SECRET || 'fallback-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
 
 // Root route
 app.get('/', (req, res) => {
@@ -144,7 +119,6 @@ app.get('/debug/env', (req, res) => {
   res.json({
     NODE_ENV: process.env.NODE_ENV || 'not set',
     MONGO_URI: process.env.MONGO_URI ? 'set' : 'not set',
-    SESSION_SECRET: process.env.SESSION_SECRET ? 'set' : 'not set',
     JWT_SECRET: process.env.JWT_SECRET ? 'set' : 'not set',
     PORT: process.env.PORT || 'not set',
     timestamp: new Date().toISOString()
@@ -412,55 +386,29 @@ app.get('/api/stats', verifyToken, async (req, res) => {
   }
 });
 
-// Debug endpoint to check session
-app.get('/api/debug/session', (req, res) => {
+// JWT token validation endpoint
+app.get('/api/debug/token', verifyToken, (req, res) => {
   res.json({
-    sessionExists: !!req.session,
-    sessionID: req.sessionID,
-    authenticated: req.isAuthenticated(),
-    user: req.user ? {
-      id: req.user.id,
-      googleId: req.user.googleId,
-      displayName: req.user.displayName,
-      email: req.user.email
-    } : null,
-    sessionData: req.session
+    authenticated: true,
+    user: req.user,
+    tokenValid: true,
+    timestamp: new Date().toISOString()
   });
 });
 
-// Session cleanup endpoint
-app.post('/api/debug/clear-session', (req, res) => {
-  if (req.session) {
-    req.session.destroy((err) => {
-      if (err) {
-        console.error('Error destroying session:', err);
-        return res.status(500).json({ error: 'Failed to clear session' });
-      }
-      res.json({ message: 'Session cleared successfully' });
-    });
-  } else {
-    res.json({ message: 'No session to clear' });
-  }
-});
-
 // Chat cleanup endpoint (for manual triggering)
-app.post('/api/admin/cleanup', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ error: 'Not authenticated' });
+app.post('/api/admin/cleanup', verifyToken, async (req, res) => {
+  try {
+    // In a real app, you'd check if the user is an admin
+    const cleanupService = new ChatCleanupService();
+    await cleanupService.manualCleanup();
+    res.json({ message: 'Chat cleanup completed successfully' });
+  } catch (error) {
+    console.error('Manual cleanup failed:', error);
+    res.status(500).json({ error: 'Cleanup failed' });
   }
-
-  // In a real app, you'd check if the user is an admin
-  const cleanupService = new ChatCleanupService();
-  cleanupService.manualCleanup()
-    .then(() => {
-      res.json({ message: 'Chat cleanup completed successfully' });
-    })
-    .catch((error) => {
-      console.error('Manual cleanup failed:', error);
-      res.status(500).json({ error: 'Cleanup failed' });
-    });
 });
-
+  
 // Chatbot route
 app.use('/api/chatbot', chatbotRoute);
 
@@ -496,7 +444,6 @@ const startServer = async () => {
     console.log('🚀 Starting server...');
     console.log('📊 Environment:', process.env.NODE_ENV || 'development');
     console.log('🔗 MongoDB URI:', process.env.MONGO_URI ? 'Set' : 'Not set');
-    console.log('🔐 Session Secret:', process.env.SESSION_SECRET ? 'Set' : 'Not set');
     console.log('🔑 JWT Secret:', process.env.JWT_SECRET ? 'Set' : 'Not set');
     console.log('🔥 Firebase API Key:', process.env.FIREBASE_API_KEY ? 'Set' : 'Not set');
     
@@ -511,7 +458,7 @@ const startServer = async () => {
       console.log('⚠️  Firebase not configured, chat cleanup disabled');
     }
 
-    app.listen(PORT, () => {
+app.listen(PORT, () => {
       console.log(`🚀 Server listening on port ${PORT}`);
       console.log(`🔐 Auth endpoints: http://localhost:${PORT}/auth`);
       console.log(`📊 API endpoints: http://localhost:${PORT}/api`);

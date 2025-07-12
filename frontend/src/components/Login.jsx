@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useMood } from '../context/MoodContext.jsx';
 
@@ -16,6 +17,7 @@ const Login = () => {
   
   const { login, register } = useAuth();
   const { currentMood, getMoodGradient, getMoodBgGradient, getMoodBorderColor, getMoodShadowColor } = useMood();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -34,8 +36,10 @@ const Login = () => {
       }
 
       if (result.success) {
-        // Redirect to dashboard
-        window.location.href = '/dashboard';
+        // Wait a moment for the auth state to update
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 100);
       } else {
         setError(result.error);
       }

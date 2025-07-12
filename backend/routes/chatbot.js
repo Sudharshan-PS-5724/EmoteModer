@@ -153,7 +153,6 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Free OpenRouter models (no cost) - using :free tag models
 const FREE_MODELS = [
-  'google/gemini-flash-1.5:free',
   'anthropic/claude-3-haiku:free',
   'meta-llama/llama-3.1-8b-instruct:free',
   'microsoft/phi-3-mini-4k-instruct:free',
@@ -161,7 +160,6 @@ const FREE_MODELS = [
   'openchat/openchat-3.5-0106:free',
   'mistralai/mistral-7b-instruct:free',
   'microsoft/phi-2:free',
-  'google/gemini-pro:free',
   'anthropic/claude-instant-1:free'
 ];
 

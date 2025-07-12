@@ -10,6 +10,9 @@ export default {
         'xs': '475px',
       },
       fontFamily: {
+        // Primary font
+        'mango': ['Mango Grotesque', 'system-ui', 'sans-serif'],
+        
         // Base fonts
         'poppins': ['Poppins', 'system-ui', 'sans-serif'],
         'montserrat': ['Montserrat', 'system-ui', 'sans-serif'],

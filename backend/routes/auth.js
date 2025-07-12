@@ -4,6 +4,31 @@ const { findByUsername, findByEmail, createUser, updateLastLogin } = require('..
 
 const router = express.Router();
 
+// Generate access token (short-lived)
+const generateAccessToken = (user) => {
+  return jwt.sign(
+    { 
+      userId: user._id, 
+      username: user.username,
+      type: 'access'
+    },
+    process.env.JWT_SECRET || 'fallback-secret',
+    { expiresIn: '15m' }
+  );
+};
+
+// Generate refresh token (long-lived)
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    { 
+      userId: user._id,
+      type: 'refresh'
+    },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'fallback-secret',
+    { expiresIn: '7d' }
+  );
+};
+
 // Register new user
 router.post('/register', async (req, res) => {
   try {
@@ -19,6 +44,22 @@ router.post('/register', async (req, res) => {
     if (password.length < 6) {
       return res.status(400).json({ 
         error: 'Password must be at least 6 characters long' 
+      });
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        error: 'Please provide a valid email address' 
+      });
+    }
+
+    // Username validation
+    const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({ 
+        error: 'Username must be 3-30 characters long and contain only letters, numbers, and underscores' 
       });
     }
 
@@ -38,12 +79,9 @@ router.post('/register', async (req, res) => {
       displayName
     });
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, username: user.username },
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: '24h' }
-    );
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
 
     // Update last login
     await updateLastLogin(user._id);
@@ -57,7 +95,8 @@ router.post('/register', async (req, res) => {
         displayName: user.displayName,
         avatar: user.avatar
       },
-      token
+      accessToken,
+      refreshToken
     });
 
   } catch (error) {
@@ -96,12 +135,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, username: user.username },
-      process.env.JWT_SECRET || 'fallback-secret',
-      { expiresIn: '24h' }
-    );
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
 
     // Update last login
     await updateLastLogin(user._id);
@@ -115,13 +151,74 @@ router.post('/login', async (req, res) => {
         displayName: user.displayName,
         avatar: user.avatar
       },
-      token
+      accessToken,
+      refreshToken
     });
 
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ 
       error: 'Login failed' 
+    });
+  }
+});
+
+// Refresh token endpoint
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ 
+        error: 'Refresh token is required' 
+      });
+    }
+
+    // Verify refresh token
+    const decoded = jwt.verify(
+      refreshToken, 
+      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET || 'fallback-secret'
+    );
+
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ 
+        error: 'Invalid token type' 
+      });
+    }
+
+    // Get user
+    const { findById } = require('../models/User');
+    const user = await findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(401).json({ 
+        error: 'User not found' 
+      });
+    }
+
+    // Generate new tokens
+    const newAccessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken
+    });
+
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        error: 'Invalid refresh token' 
+      });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        error: 'Refresh token expired' 
+      });
+    }
+    res.status(500).json({ 
+      error: 'Token refresh failed' 
     });
   }
 });
@@ -138,11 +235,28 @@ const verifyToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret');
+    
+    if (decoded.type !== 'access') {
+      return res.status(401).json({ 
+        error: 'Invalid token type' 
+      });
+    }
+    
     req.user = decoded;
     next();
   } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        error: 'Invalid token' 
+      });
+    }
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        error: 'Token expired' 
+      });
+    }
     return res.status(401).json({ 
-      error: 'Invalid token' 
+      error: 'Token verification failed' 
     });
   }
 };
@@ -179,6 +293,7 @@ router.get('/me', verifyToken, async (req, res) => {
 
 // Logout
 router.post('/logout', (req, res) => {
+  // In a more advanced setup, you might want to blacklist the refresh token
   res.json({ 
     message: 'Logged out successfully' 
   });
@@ -187,11 +302,12 @@ router.post('/logout', (req, res) => {
 // Debug endpoint
 router.get('/debug', (req, res) => {
   res.json({
-    message: 'Simple auth system is working',
+    message: 'JWT authentication system is working',
     timestamp: new Date().toISOString(),
     endpoints: {
       register: 'POST /auth/register',
       login: 'POST /auth/login',
+      refresh: 'POST /auth/refresh',
       me: 'GET /auth/me',
       logout: 'POST /auth/logout'
     }

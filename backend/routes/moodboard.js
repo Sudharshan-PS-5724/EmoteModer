@@ -10,7 +10,7 @@ function requireAuth(req, res, next) {
 
 // Get all mood boards for current user
 router.get('/', requireAuth, async (req, res) => {
-  const boards = await getBoardsByUser(req.user.googleId || req.user.id);
+  const boards = await getBoardsByUser(req.user.id);
   res.json(boards);
 });
 
@@ -18,7 +18,7 @@ router.get('/', requireAuth, async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   const board = await createBoard({
     ...req.body,
-    userId: req.user.googleId || req.user.id
+    userId: req.user.id
   });
   res.status(201).json(board);
 });
@@ -32,7 +32,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 // Delete a mood board
 router.delete('/:id', requireAuth, async (req, res) => {
-  const result = await deleteBoard(req.params.id, req.user.googleId || req.user.id);
+  const result = await deleteBoard(req.params.id, req.user.id);
   if (result.deleted || result.deletedCount) {
     res.json({ message: 'Deleted' });
   } else {

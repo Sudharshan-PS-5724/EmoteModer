@@ -269,7 +269,7 @@ const Dashboard = () => {
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ duration: 1, type: "spring" }}
-              src="/mirror_alter_ego.png" 
+              src="../assets/mirror_alter_ego.png" 
               alt="Mirror Alter Ego" 
               className="w-20 h-20 mr-8 rounded-full object-cover shadow-2xl"
             />
@@ -277,7 +277,7 @@ const Dashboard = () => {
               initial={{ scale: 0, rotate: 180 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ duration: 1, type: "spring", delay: 0.2 }}
-              src="/black_ghost.png" 
+              src="../assets/black_ghost.png" 
               alt="Black Ghost" 
               className="w-20 h-20 ml-8 rounded-full object-cover shadow-2xl"
             />

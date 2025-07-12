@@ -74,21 +74,26 @@ connectRedis();
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
     ? [
+        'https://emote-moder.vercel.app',
         'https://emotemoder.vercel.app',
         'https://emotemoder-frontend.vercel.app',
         'https://emotemoder-git-main.vercel.app',
         'http://localhost:5173' // for development
       ]
-    : ['http://localhost:5173'],
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5177'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Origin', 'Accept'],
+  optionsSuccessStatus: 200
 };
 
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
 
 // Root route
 app.get('/', (req, res) => {

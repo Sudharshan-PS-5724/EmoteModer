@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useMood } from '../context/MoodContext.jsx';
+import { config } from '../config.js';
 
 const moodCardStyles = {
   happy: 'bg-mood-happy-primary/20 border-mood-happy-primary',
@@ -30,7 +31,7 @@ const PublicGallery = () => {
     const fetchPublicBoards = async () => {
       try {
         setLoading(true);
-        const response = await fetch('/api/moodboards/public');
+        const response = await fetch(`${config.getApiUrl()}/api/moodboards/public`);
         
         if (!response.ok) {
           throw new Error('Failed to fetch public boards');

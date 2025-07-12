@@ -4,6 +4,15 @@ const { findByUsername, findByEmail, createUser, updateLastLogin } = require('..
 
 const router = express.Router();
 
+// Handle OPTIONS requests for auth routes
+router.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://emote-moder.vercel.app');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  res.status(200).end();
+});
+
 // Generate access token (short-lived)
 const generateAccessToken = (user) => {
   return jwt.sign(
@@ -31,6 +40,12 @@ const generateRefreshToken = (user) => {
 
 // Register new user
 router.post('/register', async (req, res) => {
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', 'https://emote-moder.vercel.app');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  
   try {
     const { username, email, password, displayName } = req.body;
 
@@ -109,6 +124,12 @@ router.post('/register', async (req, res) => {
 
 // Login user
 router.post('/login', async (req, res) => {
+  // Set CORS headers
+  res.header('Access-Control-Allow-Origin', 'https://emote-moder.vercel.app');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Origin, Accept');
+  
   try {
     const { username, password } = req.body;
 

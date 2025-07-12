@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMood } from '../context/MoodContext.jsx';
+import { config } from '../config.js';
 
 const CustomChatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,7 +59,7 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
 
   const sendMessageToAI = async (userMessage) => {
     // Check if API key is available
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    const apiKey = config.OPENROUTER_API_KEY;
     if (!apiKey) {
       console.error('OpenRouter API key not found, using fallback responses');
       return getFallbackResponse(userMessage);

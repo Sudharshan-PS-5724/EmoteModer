@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useMood } from '../context/MoodContext.jsx';
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
+import { config } from '../config.js';
 
 const moodBgStyles = {
   happy: 'bg-mood-happy-background',
@@ -45,7 +46,7 @@ const MoodBoard = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const fileInputRef = useRef(null);
 
-  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  const API_BASE = config.getApiUrl();
 
   const moods = [
     { name: 'happy', emoji: '😊', description: 'Joyful & Bright' },

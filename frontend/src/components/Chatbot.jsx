@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useMood } from '../context/MoodContext.jsx';
+import { config } from '../config.js';
 
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -14,7 +15,7 @@ const Chatbot = () => {
   const { currentMood, addMoodToHistory } = useMood();
   const [userRegion] = useState('tamil'); // Default to Tamil region
 
-  const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  const API_BASE = config.getApiUrl();
 
   // Welcome messages with Tamil touch
   const welcomeMessages = [

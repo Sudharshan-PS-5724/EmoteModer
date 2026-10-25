@@ -85,7 +85,7 @@ jspm_packages/
 
 # Gatsby files
 .cache/
-public
+/public
 
 # Storybook build outputs
 .out
@@ -103,13 +103,14 @@ firestore-debug.log
 # MongoDB
 *.db
 
-# Redis
-dump.rdb
-
 # API Keys and Secrets
 *.pem
 *.key
 secrets.json
+*service-account*.json
+*serviceAccountKey*.json
+*firebase-admin*.json
+*-adminsdk-*.json
 
 # Backup files
 *.bak
@@ -121,4 +122,4 @@ coverage/
 
 # Deployment files
 .vercel
-.netlify 
+.netlify

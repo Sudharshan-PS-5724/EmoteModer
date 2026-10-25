@@ -1,0 +1,8 @@
+[
+  { "id": "happy", "label": "Bright room", "mark": "✳", "tone": "sun", "description": "Good news, tiny wins, and warm energy." },
+  { "id": "sad", "label": "Soft room", "mark": "◒", "tone": "blue", "description": "A gentle place to be honest about hard days." },
+  { "id": "angry", "label": "Bold room", "mark": "ϟ", "tone": "coral", "description": "Let it out. Find people who understand." },
+  { "id": "fear", "label": "Uncertain room", "mark": "⌁", "tone": "slate", "description": "Make a little room for the unknown." },
+  { "id": "disgust", "label": "Over it room", "mark": "↗", "tone": "green", "description": "Get it off your chest and reset." },
+  { "id": "surprise", "label": "Plot twist room", "mark": "✦", "tone": "pink", "description": "The unexpected deserves a conversation." }
+]

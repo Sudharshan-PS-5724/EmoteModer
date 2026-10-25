@@ -3,8 +3,8 @@ const axios = require('axios');
 class SentimentAnalysisService {
   constructor() {
     this.apiKey = process.env.HUGGING_FACE_API_KEY || process.env.HUGGINGFACE_API_KEY;
-    this.baseUrl = 'https://api-inference.huggingface.co/models';
-    this.model = 'SamLowe/roberta-base-go_emotions';
+    this.baseUrl = 'https://router.huggingface.co/hf-inference/models';
+    this.model = process.env.HUGGING_FACE_MODEL || 'SamLowe/roberta-base-go_emotions';
   }
 
   async analyzeMoodBoard(moodBoard) {
@@ -15,6 +15,7 @@ class SentimentAnalysisService {
       if (!textContent.trim()) {
         return {
           emotion: 'neutral',
+          model: 'local-lexicon-v1',
           confidence: 0.5,
           details: {
             primary: 'neutral',
@@ -33,6 +34,7 @@ class SentimentAnalysisService {
       
       return {
         emotion: mappedEmotion.primary,
+        model: analysis.model,
         confidence: mappedEmotion.confidence,
         details: {
           primary: mappedEmotion.primary,
@@ -58,18 +60,18 @@ class SentimentAnalysisService {
     // Add content from items
     if (moodBoard.items && Array.isArray(moodBoard.items)) {
       moodBoard.items.forEach(item => {
-        if (item.text) textContent += item.text + ' ';
+        if (item.type === 'text' && item.content) textContent += item.content + ' ';
+        if (item.name) textContent += item.name + ' ';
         if (item.description) textContent += item.description + ' ';
         if (item.title) textContent += item.title + ' ';
       });
     }
     
-    return textContent.trim();
+    return textContent.trim().slice(0, 4000);
   }
 
   async analyzeWithHuggingFace(text) {
     if (!this.apiKey) {
-      console.warn('Hugging Face API key not found, using fallback analysis');
       return this.fallbackTextAnalysis(text);
     }
 
@@ -87,7 +89,7 @@ class SentimentAnalysisService {
       );
 
       if (response.data && Array.isArray(response.data)) {
-        return this.processHuggingFaceResponse(response.data[0]);
+        return { ...this.processHuggingFaceResponse(Array.isArray(response.data[0]) ? response.data[0] : response.data), model: this.model };
       }
       
       return this.fallbackTextAnalysis(text);
@@ -99,34 +101,42 @@ class SentimentAnalysisService {
 
   processHuggingFaceResponse(data) {
     // Sort emotions by confidence
-    const sortedEmotions = data.sort((a, b) => b.score - a.score);
+    const sortedEmotions = (Array.isArray(data) ? data : []).filter((entry) => typeof entry?.label === 'string' && Number.isFinite(entry.score) && entry.score >= 0 && entry.score <= 1).sort((a, b) => b.score - a.score);
+    if (!sortedEmotions.length) throw new Error('Invalid emotion provider response');
     
     return {
       emotions: sortedEmotions.slice(0, 5), // Top 5 emotions
       primary: sortedEmotions[0],
-      confidence: sortedEmotions[0]?.score || 0.5
+      confidence: sortedEmotions[0].score
     };
   }
 
   mapEmotions(analysis) {
     const emotionMapping = {
+      'happy': 'happy',
+      'sad': 'sad',
+      'angry': 'angry',
       // Happy emotions
       'joy': 'happy',
-      'excitement': 'happy',
+      'admiration': 'happy',
+      'gratitude': 'happy',
+      'love': 'happy',
       'amusement': 'happy',
+      'excitement': 'happy',
       'pride': 'happy',
       'relief': 'happy',
       'optimism': 'happy',
       
       // Sad emotions
       'sadness': 'sad',
-      'grief': 'sad',
       'disappointment': 'sad',
-      'embarrassment': 'sad',
       'remorse': 'sad',
+      'embarrassment': 'sad',
+      'grief': 'sad',
       
       // Angry emotions
       'anger': 'angry',
+      'disapproval': 'angry',
       'annoyance': 'angry',
       'disgust': 'disgust',
       'contempt': 'angry',
@@ -172,7 +182,7 @@ class SentimentAnalysisService {
 
   extractKeywords(text) {
     // Simple keyword extraction (can be enhanced with NLP libraries)
-    const words = text.toLowerCase().split(/\s+/);
+    const words = text.toLowerCase().match(/[\p{L}]+/gu) || [];
     const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them']);
     
     const keywords = words
@@ -186,24 +196,27 @@ class SentimentAnalysisService {
     // Simple keyword-based analysis
     const happyWords = ['happy', 'joy', 'excited', 'great', 'wonderful', 'amazing', 'love', 'good', 'nice', 'beautiful', 'fantastic', 'awesome'];
     const sadWords = ['sad', 'depressed', 'lonely', 'hurt', 'pain', 'cry', 'tears', 'miss', 'lost', 'alone', 'broken', 'heart'];
-    const angryWords = ['angry', 'mad', 'furious', 'hate', 'rage', 'frustrated', 'annoyed', 'irritated', 'upset', 'disgusted'];
+    const angryWords = ['angry', 'mad', 'furious', 'hate', 'rage', 'frustrated', 'annoyed', 'irritated', 'upset'];
+    const disgustWords = ['disgusted', 'gross', 'nasty', 'repulsed', 'revolting', 'awful'];
     const fearWords = ['afraid', 'scared', 'fear', 'anxious', 'worried', 'nervous', 'terrified', 'panic', 'stress', 'concerned'];
     const surpriseWords = ['surprised', 'shocked', 'amazed', 'wow', 'incredible', 'unbelievable', 'astonished', 'stunned'];
 
-    const words = text.toLowerCase().split(/\s+/);
+    const words = text.toLowerCase().match(/[\p{L}]+/gu) || [];
     
     const scores = {
       happy: words.filter(w => happyWords.includes(w)).length,
       sad: words.filter(w => sadWords.includes(w)).length,
       angry: words.filter(w => angryWords.includes(w)).length,
       fear: words.filter(w => fearWords.includes(w)).length,
-      surprise: words.filter(w => surpriseWords.includes(w)).length
+      surprise: words.filter(w => surpriseWords.includes(w)).length,
+      disgust: words.filter(w => disgustWords.includes(w)).length
     };
 
-    const maxEmotion = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
-    const confidence = Math.min(0.9, scores[maxEmotion] * 0.3 + 0.3);
+    const maxEmotion = Object.values(scores).every((score) => score === 0) ? 'neutral' : Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+    const confidence = maxEmotion === 'neutral' ? 0.5 : Math.min(0.95, 0.45 + scores[maxEmotion] * 0.12);
 
     return {
+      model: 'local-lexicon-v1',
       emotions: [{ label: maxEmotion, score: confidence }],
       primary: { label: maxEmotion, score: confidence },
       confidence: confidence
@@ -211,20 +224,10 @@ class SentimentAnalysisService {
   }
 
   fallbackAnalysis(moodBoard) {
-    // Fallback when API fails
-    return {
-      emotion: 'neutral',
-      confidence: 0.5,
-      details: {
-        primary: 'neutral',
-        secondary: [],
-        intensity: 'medium',
-        keywords: [],
-        rawAnalysis: null
-      }
-    };
+    const text = this.extractTextFromMoodBoard(moodBoard || '');
+    const mapped = this.mapEmotions(this.fallbackTextAnalysis(text));
+    return { emotion: mapped.primary, confidence: mapped.confidence, model: 'local-lexicon-v1', details: { primary: mapped.primary, secondary: mapped.secondary, intensity: mapped.intensity, keywords: this.extractKeywords(text), rawAnalysis: null } };
   }
-
   async analyzeText(text) {
     try {
       const analysis = await this.analyzeWithHuggingFace(text);
@@ -232,6 +235,7 @@ class SentimentAnalysisService {
       
       return {
         emotion: mappedEmotion.primary,
+        model: analysis.model,
         confidence: mappedEmotion.confidence,
         details: {
           primary: mappedEmotion.primary,
@@ -242,9 +246,9 @@ class SentimentAnalysisService {
       };
     } catch (error) {
       console.error('Text analysis error:', error);
-      return this.fallbackTextAnalysis(text);
+      return this.fallbackAnalysis({ description: text });
     }
   }
 }
 
-module.exports = new SentimentAnalysisService(); 
+module.exports = new SentimentAnalysisService();

@@ -1,156 +1,109 @@
 require('dotenv').config();
+const fs = require('node:fs');
+const path = require('node:path');
 const express = require('express');
-const session = require('express-session');
-const { createClient } = require('redis');
-const passport = require('passport');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const { RedisStore } = require('connect-redis');
-const ChatCleanupService = require('./services/chatCleanup');
 const chatbotRoute = require('./routes/chatbot');
 const sentimentAnalysis = require('./services/sentimentAnalysis');
-
-require('./auth'); // Import passport config
+const requireAuth = require('./middleware/requireAuth');
+const userRateLimit = require('./middleware/userRateLimit');
+const { validateBoard, parsePage, encodeCursor } = require('./lib/boardValidation');
 
 const app = express();
+mongoose.set('bufferCommands', false);
+app.disable('x-powered-by');
 
-// MongoDB Atlas connection with better error handling
+// Persistence is explicit: application records never fall back to process memory.
 const connectMongoDB = async () => {
-  try {
-    if (process.env.MONGO_URI) {
-      console.log('🔗 Connecting to MongoDB Atlas...');
-      await mongoose.connect(process.env.MONGO_URI, {
-        serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 45000,
-      });
-      console.log('✅ MongoDB Atlas connected successfully!');
-      console.log(`📊 Database: ${mongoose.connection.name}`);
-      console.log(`🌐 Host: ${mongoose.connection.host}`);
-    } else {
-      console.log('⚠️  No MONGO_URI found in environment variables');
-      console.log('📝 Using in-memory storage for development');
-    }
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-    console.log('📝 Falling back to in-memory storage');
+  if (!process.env.MONGO_URI) {
+    if (process.env.NODE_ENV === 'production') throw new Error('MONGO_URI is required in production');
+    console.warn('MONGO_URI is unset; database-backed routes will be unavailable until MongoDB is configured.');
+    return;
   }
+  await mongoose.connect(process.env.MONGO_URI, { maxPoolSize: 10, minPoolSize: 0, maxIdleTimeMS: 60000, waitQueueTimeoutMS: 5000, serverSelectionTimeoutMS: 10000, socketTimeoutMS: 45000 });
+  console.log(`MongoDB connected: ${mongoose.connection.name}`);
 };
 
-// Initialize MongoDB connection
-connectMongoDB();
-
-// Create and connect Redis client
-const redisClient = createClient({ url: 'redis://localhost:6379' });
-redisClient.connect().catch(console.error);
-
-// Create RedisStore instance
-const redisStore = new RedisStore({
-  client: redisClient,
-  prefix: 'sess:',
-  ttl: 86400
-});
-
-// Middleware
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}));
-app.use(express.json());
-app.use(session({
-  store: redisStore,
-  secret: process.env.SESSION_SECRET || 'fallback-secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: false,
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Authentication middleware
-const requireAuth = (req, res, next) => {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  res.status(401).json({ message: 'Not authenticated' });
-};
-
-// OAuth routes
-app.use('/auth', require('./routes/auth'));
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map((origin) => origin.trim());
+if (process.env.NODE_ENV !== 'production') allowedOrigins.push('http://localhost:5173', 'http://localhost:5174');
+app.use(cors({ origin: allowedOrigins, allowedHeaders: ['Content-Type', 'Authorization'], exposedHeaders: ['X-Next-Cursor', 'Retry-After'] }));
+app.use(express.json({ limit: '1mb' }));
+app.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
 // User routes
 app.get('/api/user', requireAuth, (req, res) => {
-  res.json(req.user);
+  const { _id, firebaseUid, googleId, displayName, email, photo, createdAt } = req.user;
+  res.json({ _id, firebaseUid, googleId, displayName, email, photo, createdAt });
 });
 
+function presentBoard(board, { publicView = false, preview = false } = {}) {
+  const record = board && typeof board.toObject === 'function' ? board.toObject() : board;
+  const result = { ...record, detectedEmotion: record.emotionAnalysis?.emotion || record.mood || 'neutral', emotionConfidence: record.emotionAnalysis?.confidence };
+  if (preview) {
+    result.itemCount = record.itemCount ?? record.items?.length ?? 0;
+    result.items = (record.items || []).slice(0, 4).map((item) => ({
+      ...item,
+      ...(item.type === 'text' ? { content: String(item.content || '').slice(0, 240) } : {})
+    }));
+  }
+  if (publicView) delete result.userId;
+  return result;
+}
+function pageRequest(req, res, next) {
+  try { req.page = parsePage(req.query); next(); }
+  catch (error) { res.status(400).json({ message: error.message }); }
+}
+function sendBoardPage(res, boards, page, publicView = false) {
+  const visible = boards.slice(0, page.limit);
+  if (boards.length > page.limit) res.set('X-Next-Cursor', encodeCursor(visible[visible.length - 1]));
+  res.json(visible.map((board) => presentBoard(board, { preview: true, publicView })));
+}
 // Mood board routes with sentiment analysis
-app.get('/api/moodboards', requireAuth, async (req, res) => {
+app.get('/api/moodboards', requireAuth, pageRequest, async (req, res) => {
   try {
     const { getBoardsByUser } = require('./models/MoodBoard');
     // Ensure we use the correct user identifier
     const userId = req.user.googleId || req.user.id;
-    console.log('User object:', req.user);
-    console.log('Using userId for board retrieval:', userId);
     
-    const boards = await getBoardsByUser(userId);
+    const boards = await getBoardsByUser(userId, req.page);
     
-    // Analyze emotions for each board
-    const boardsWithEmotions = await Promise.all(
-      boards.map(async (board) => {
-        const emotionAnalysis = await sentimentAnalysis.analyzeMoodBoard(board);
-        return {
-          ...board.toObject ? board.toObject() : board,
-          detectedEmotion: emotionAnalysis.emotion,
-          emotionConfidence: emotionAnalysis.confidence
-        };
-      })
-    );
-    
-    res.json(boardsWithEmotions);
+    sendBoardPage(res, boards, req.page);
   } catch (error) {
     console.error('Error fetching mood boards:', error);
     res.status(500).json({ message: 'Error fetching mood boards' });
   }
 });
 
-app.post('/api/moodboards', requireAuth, async (req, res) => {
+app.post('/api/moodboards', requireAuth, userRateLimit({ limit: 10, windowMs: 60_000, message: 'You have created several boards recently. Please wait a minute before trying again.' }), async (req, res) => {
   try {
     const { createBoard } = require('./models/MoodBoard');
     // Ensure we use the correct user identifier
     const userId = req.user.googleId || req.user.id;
-    console.log('User object:', req.user);
-    console.log('Using userId for board creation:', userId);
     
-    // Ensure items have IDs
-    const itemsWithId = (req.body.items || []).map(item => ({
-      ...item,
-      id: item.id || Date.now().toString() + Math.random().toString(36).slice(2)
-    }));
-    
-    const boardData = {
-      ...req.body,
-      userId,
-      items: itemsWithId
-    };
+    const { title, description, mood, isPublic, items } = req.body || {};
+    const validationError = validateBoard(req.body);
+    if (validationError) return res.status(400).json({ message: validationError });
+    const boardData = { title: title.trim(), description, mood, isPublic: isPublic === true, items: items || [], userId };
     
     const board = await createBoard(boardData);
     
-    // Analyze emotion for the new board
-    const emotionAnalysis = await sentimentAnalysis.analyzeMoodBoard(board);
-    
-    // Ensure proper object conversion and createdAt field
-    const boardResponse = {
-      ...(board.toObject ? board.toObject() : board),
-      detectedEmotion: emotionAnalysis.emotion,
-      emotionConfidence: emotionAnalysis.confidence,
-      createdAt: board.createdAt || new Date()
-    };
-    
-    res.status(201).json(boardResponse);
+    let boardResponse = board.toObject ? board.toObject() : board;
+    try {
+      const emotionAnalysis = await sentimentAnalysis.analyzeMoodBoard(board);
+      const savedAnalysis = await require('./models/MoodBoard').saveEmotionAnalysis(board._id, emotionAnalysis);
+      boardResponse = {
+        ...(savedAnalysis || boardResponse),
+        detectedEmotion: emotionAnalysis.emotion,
+        emotionConfidence: emotionAnalysis.confidence
+      };
+    } catch (analysisError) {
+      // Board creation is already durable; optional analysis must not turn it into a reported failure.
+      console.error('Moodboard created without emotion analysis:', analysisError.message);
+      boardResponse = { ...boardResponse, detectedEmotion: board.mood || 'neutral' };
+    }
+
+    res.status(201).json({ ...boardResponse, createdAt: boardResponse.createdAt || new Date() });
   } catch (error) {
     console.error('Error creating mood board:', error);
     res.status(500).json({ message: 'Error creating mood board' });
@@ -158,24 +111,12 @@ app.post('/api/moodboards', requireAuth, async (req, res) => {
 });
 
 // Public mood boards route
-app.get('/api/moodboards/public', async (req, res) => {
+app.get('/api/moodboards/public', pageRequest, async (req, res) => {
   try {
     const { getPublicBoards } = require('./models/MoodBoard');
-    const boards = await getPublicBoards();
+    const boards = await getPublicBoards(req.page);
     
-    // Analyze emotions for public boards
-    const boardsWithEmotions = await Promise.all(
-      boards.map(async (board) => {
-        const emotionAnalysis = await sentimentAnalysis.analyzeMoodBoard(board);
-        return {
-          ...board.toObject ? board.toObject() : board,
-          detectedEmotion: emotionAnalysis.emotion,
-          emotionConfidence: emotionAnalysis.confidence
-        };
-      })
-    );
-    
-    res.json(boardsWithEmotions);
+    sendBoardPage(res, boards, req.page, true);
   } catch (error) {
     console.error('Error fetching public mood boards:', error);
     res.status(500).json({ message: 'Error fetching public mood boards' });
@@ -183,6 +124,7 @@ app.get('/api/moodboards/public', async (req, res) => {
 });
 
 app.get('/api/moodboards/:id', requireAuth, async (req, res) => {
+  if (!/^[a-f0-9]{24}$/i.test(req.params.id)) return res.status(400).json({ message: 'Invalid board ID provided' });
   try {
     const { getBoardById } = require('./models/MoodBoard');
     const board = await getBoardById(req.params.id);
@@ -193,17 +135,10 @@ app.get('/api/moodboards/:id', requireAuth, async (req, res) => {
     
     const userId = req.user.googleId || req.user.id;
     if (board.userId !== userId) {
-      return res.status(403).json({ message: 'Not authorized' });
+      return res.status(404).json({ message: 'Mood board not found' });
     }
     
-    // Analyze emotion for the board
-    const emotionAnalysis = await sentimentAnalysis.analyzeMoodBoard(board);
-    
-    res.json({
-      ...(board.toObject ? board.toObject() : board),
-      detectedEmotion: emotionAnalysis.emotion,
-      emotionConfidence: emotionAnalysis.confidence
-    });
+    res.json(presentBoard(board));
   } catch (error) {
     console.error('Error fetching mood board:', error);
     res.status(500).json({ message: 'Error fetching mood board' });
@@ -216,7 +151,7 @@ app.delete('/api/moodboards/:id', requireAuth, async (req, res) => {
     const userId = req.user.googleId || req.user.id;
     
     // Validate the ID parameter
-    if (!req.params.id || req.params.id === 'undefined' || req.params.id === 'null') {
+    if (!/^[a-f0-9]{24}$/i.test(req.params.id)) {
       return res.status(400).json({ message: 'Invalid board ID provided' });
     }
     
@@ -234,12 +169,11 @@ app.delete('/api/moodboards/:id', requireAuth, async (req, res) => {
 });
 
 // Sentiment analysis endpoint
-app.post('/api/analyze-emotion', requireAuth, async (req, res) => {
+app.post('/api/analyze-emotion', requireAuth, userRateLimit({ limit: 10, windowMs: 60_000, message: 'Too many emotion analyses. Please wait a minute and try again.' }), async (req, res) => {
   try {
-    const { text } = req.body;
-    if (!text) {
-      return res.status(400).json({ message: 'Text is required' });
-    }
+    const { text } = req.body || {};
+    if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ message: 'Text is required' });
+    if (text.length > 4000) return res.status(400).json({ message: 'Text must be 4000 characters or fewer' });
     
     const analysis = await sentimentAnalysis.analyzeText(text);
     res.json(analysis);
@@ -249,158 +183,74 @@ app.post('/api/analyze-emotion', requireAuth, async (req, res) => {
   }
 });
 
-// Mood history endpoint
-app.get('/api/mood-history', requireAuth, async (req, res) => {
-  try {
-    const { getMoodHistory } = require('./models/User');
-    const userId = req.user.googleId || req.user.id;
-    const history = await getMoodHistory(userId);
-    
-    res.json({ history });
-  } catch (error) {
-    console.error('Error fetching mood history:', error);
-    res.status(500).json({ message: 'Error fetching mood history' });
-  }
-});
-
-// Storage monitoring endpoint
-app.get('/api/stats', requireAuth, async (req, res) => {
-  try {
-    let stats = {
-      mongodb: {
-        connected: mongoose.connection.readyState === 1,
-        storageSize: 0,
-        collections: 0,
-        users: 0,
-        boards: 0
-      },
-      system: {
-        timestamp: new Date(),
-        uptime: process.uptime()
-      }
-    };
-
-    if (mongoose.connection.readyState === 1) {
-      const dbStats = await mongoose.connection.db.stats();
-      const { User } = require('./models/User');
-      const { MoodBoard } = require('./models/MoodBoard');
-      
-      stats.mongodb = {
-        connected: true,
-        storageSize: dbStats.dataSize,
-        storageSizeMB: Math.round(dbStats.dataSize / (1024 * 1024) * 100) / 100,
-        collections: dbStats.collections,
-        users: await User.countDocuments(),
-        boards: await MoodBoard.countDocuments(),
-        database: mongoose.connection.name,
-        host: mongoose.connection.host
-      };
-
-      // Calculate usage percentage (assuming 512MB free tier limit)
-      const freeTierLimit = 512 * 1024 * 1024; // 512MB in bytes
-      stats.mongodb.usagePercent = Math.round((dbStats.dataSize / freeTierLimit) * 100);
-      
-      // Warning if usage is high
-      if (stats.mongodb.usagePercent > 80) {
-        console.warn(`⚠️ HIGH STORAGE USAGE: ${stats.mongodb.usagePercent}% (${stats.mongodb.storageSizeMB}MB used)`);
-      }
-    }
-
-    res.json(stats);
-  } catch (error) {
-    console.error('Error fetching stats:', error);
-    res.status(500).json({ message: 'Error fetching stats' });
-  }
-});
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'MoodBoard Me API is running',
+  const databaseReady = mongoose.connection.readyState === 1;
+  const firebaseAdminConfigured = Boolean(process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY);
+  const ready = databaseReady && firebaseAdminConfigured;
+  res.status(ready || process.env.NODE_ENV !== 'production' ? 200 : 503).json({
+    status: ready ? 'OK' : 'DEGRADED',
+    message: 'EmoteModer API',
     mongodb: {
-      connected: mongoose.connection.readyState === 1,
-      database: mongoose.connection.name,
-      host: mongoose.connection.host
+      connected: databaseReady
     },
-    authenticated: req.isAuthenticated(),
-    user: req.user ? req.user.displayName : null
+    firebaseAdminConfigured
   });
 });
 
-// Debug endpoint to check session
-app.get('/api/debug/session', (req, res) => {
-  res.json({
-    sessionExists: !!req.session,
-    sessionID: req.sessionID,
-    authenticated: req.isAuthenticated(),
-    user: req.user ? {
-      id: req.user.id,
-      googleId: req.user.googleId,
-      displayName: req.user.displayName,
-      email: req.user.email
-    } : null,
-    sessionData: req.session
-  });
-});
-
-// Session cleanup endpoint
-app.post('/api/debug/clear-session', (req, res) => {
-  if (req.session) {
-    req.session.destroy((err) => {
-      if (err) {
-        console.error('Error destroying session:', err);
-        return res.status(500).json({ error: 'Failed to clear session' });
-      }
-      res.json({ message: 'Session cleared successfully' });
-    });
-  } else {
-    res.json({ message: 'No session to clear' });
-  }
-});
-
-// Chat cleanup endpoint (for manual triggering)
-app.post('/api/admin/cleanup', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  // In a real app, you'd check if the user is an admin
-  const cleanupService = new ChatCleanupService();
-  cleanupService.manualCleanup()
-    .then(() => {
-      res.json({ message: 'Chat cleanup completed successfully' });
-    })
-    .catch((error) => {
-      console.error('Manual cleanup failed:', error);
-      res.status(500).json({ error: 'Cleanup failed' });
-    });
-});
 
 // Chatbot route
-app.use('/api/chatbot', chatbotRoute);
+app.use('/api/chatbot', requireAuth,
+  userRateLimit({ limit: 20, windowMs: 60_000, message: 'You have reached the chat limit for this minute. Please try again shortly.' }),
+  userRateLimit({ limit: 200, windowMs: 86_400_000, message: 'You have reached the 200-message chat limit for today. Please return tomorrow.' }),
+  chatbotRoute
+);
+app.use('/api', (req, res) => res.status(404).json({ message: 'API route not found' }));
+const frontendDist = path.resolve(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist, { index: false, maxAge: '1y', immutable: true }));
+  app.get('*', (req, res, next) => {
+    if (!req.accepts('html')) return next();
+    res.set('Cache-Control', 'no-store');
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Request body is too large' });
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ message: 'Request body must contain valid JSON' });
+  console.error('Request failed:', error.message);
+  res.status(500).json({ message: 'The request could not be completed' });
+});
 
 // Start the server
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-  await connectMongoDB();
-  
-  // Start chat cleanup service
-  if (process.env.FIREBASE_API_KEY) {
-    const cleanupService = new ChatCleanupService();
-    cleanupService.startScheduler();
-    console.log('✅ Chat cleanup service started');
-  } else {
-    console.log('⚠️  Firebase not configured, chat cleanup disabled');
+  if (process.env.NODE_ENV === 'production' && (!process.env.FRONTEND_URL || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_PROJECT_ID)) throw new Error('FRONTEND_URL and Firebase Admin credentials are required in production');
+  try {
+    await connectMongoDB();
+  } catch (error) {
+    if (process.env.NODE_ENV === 'production') throw error;
+    console.warn(`MongoDB is unavailable; starting API in degraded development mode (${error.code || error.name}). Database-backed routes will return an availability error until it reconnects.`);
   }
 
-  app.listen(PORT, () => {
+  console.log('Firestore records include expiresAt metadata. Managed Firestore TTL is intentionally not required on the no-cost Spark plan.');
+
+  const server = app.listen(PORT, () => {
     console.log(`🚀 Server listening on port ${PORT}`);
-    console.log(`🔐 OAuth endpoint: http://localhost:${PORT}/auth`);
     console.log(`📊 API endpoints: http://localhost:${PORT}/api`);
     console.log(`🔍 Health check: http://localhost:${PORT}/api/health`);
   });
+  const stop = () => {
+    const deadline = setTimeout(() => process.exit(1), 10_000);
+    deadline.unref();
+    server.close(async () => { await mongoose.disconnect(); clearTimeout(deadline); });
+  };
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
+  return server;
 };
 
-startServer().catch(console.error);
+if (require.main === module) startServer().catch((error) => { console.error('Server startup failed:', error.message); process.exit(1); });
+module.exports = { app, startServer };

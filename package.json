@@ -3,21 +3,24 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "concurrently \"npm run dev --prefix frontend\" \"npm start --prefix backend\""
+    "test": "npm test --prefix backend",
+    "test:rules": "node backend/scripts/require-java.js && firebase emulators:exec --only firestore --project demo-emotemoder --config firebase.test.json \"node --test firebase/tests/rules.test.cjs\"",
+    "check:config": "node backend/scripts/check-config.js",
+    "dev": "concurrently --kill-others-on-fail --names web,api --prefix-colors cyan,magenta \"npm run dev --prefix frontend\" \"npm run dev --prefix backend\"",
+    "dev:full": "npm run dev",
+    "dev:web": "npm run dev --prefix frontend",
+    "dev:api": "npm run dev --prefix backend",
+    "build": "npm run build --prefix frontend",
+    "build:fast": "npm run build --prefix frontend",
+    "start": "npm run build && npm run start:prod --prefix backend",
+    "start:api": "npm run start:prod --prefix backend",
+    "preview": "npm run start"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "autoprefixer": "^10.4.21",
-    "concurrently": "^9.1.2",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.10"
-  },
-  "dependencies": {
-    "axios": "^1.10.0",
-    "sentiment": "^5.0.2"
+    "concurrently": "^9.2.5"
   }
 }

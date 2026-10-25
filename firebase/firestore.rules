@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function boundedList() { return request.query.limit != null && request.query.limit <= 100; }
+    function displayName() {
+      let name = request.auth.token.get('name', '');
+      return name is string && name.size() > 0 ? name : 'Community member';
+    }
+    function ownsIncomingRecord() { return signedIn() && request.resource.data.userId == request.auth.uid; }
+    function validRoom(roomId) { return roomId in ['happy', 'sad', 'angry', 'fear', 'disgust', 'surprise']; }
+    function validMood(mood) {
+      return mood in ['happy', 'sad', 'angry', 'fear', 'disgust', 'surprise', 'neutral'];
+    }
+    function expiresWithin(days) {
+      return request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(days, 'd');
+    }
+    function validMessage() {
+      return ownsIncomingRecord()
+        && request.resource.data.keys().hasOnly(['text', 'userId', 'userName', 'userPhoto', 'timestamp', 'expiresAt', 'type', 'mood'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.userName is string
+        && request.resource.data.userName == displayName()
+        && request.resource.data.userName.size() <= 256
+        && request.resource.data.userPhoto is string
+        && request.resource.data.userPhoto.size() <= 2048
+        && request.resource.data.userPhoto == request.auth.token.get('picture', '')
+        && request.resource.data.timestamp == request.time
+        && expiresWithin(30)
+        && ((request.resource.data.type == 'text' && !('mood' in request.resource.data))
+          || (request.resource.data.type == 'mood' && validMood(request.resource.data.mood)));
+    }
+    match /chatRooms/{roomId}/messages/{messageId} {
+      allow get: if signedIn() && validRoom(roomId);
+      allow list: if signedIn() && validRoom(roomId) && boundedList();
+      allow create: if validRoom(roomId) && validMessage();
+      allow delete: if validRoom(roomId) && signedIn() && resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+    match /chatRooms/{roomId}/typing/{userId} {
+      allow get: if signedIn() && validRoom(roomId);
+      allow list: if signedIn() && validRoom(roomId) && boundedList();
+      allow create, update: if validRoom(roomId)
+        && signedIn()
+        && userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId', 'userName', 'timestamp', 'expiresAt'])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userName == displayName()
+        && request.resource.data.userName is string
+        && request.resource.data.userName.size() <= 256
+        && request.resource.data.timestamp == request.time
+        && expiresWithin(1);
+      allow delete: if validRoom(roomId) && signedIn() && userId == request.auth.uid;
+    }
+  }
+}

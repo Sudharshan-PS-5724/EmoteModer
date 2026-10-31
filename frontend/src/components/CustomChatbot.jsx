@@ -1,19 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMood } from '../context/MoodContext.jsx';
+import { apiFetch } from '../lib/api';
 
 const CustomChatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [includeMoodboardContext, setIncludeMoodboardContext] = useState(() => localStorage.getItem('emotemoder.aiMoodboardContext') === 'true');
   const messagesEndRef = useRef(null);
   const { currentMood } = useMood();
 
   // Smart Modobot personality
   const modobot = {
     name: 'Modobot',
-    emoji: '🤖',
+    mark: '✦',
     systemPrompt: `You are Modobot, a highly intelligent and empathetic AI assistant specializing in emotional intelligence and mood analysis. You are:
 
 1. **Emotionally Intelligent**: You understand and respond to human emotions with empathy and wisdom
@@ -48,95 +50,38 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
       setMessages([
         {
           id: 1,
-          text: `Hello! I'm ${modobot.name} ${modobot.emoji} Your AI companion for emotional support and mood analysis. How are you feeling today?`,
+          text: `Hello! I'm ${modobot.name} ${modobot.mark} Your AI companion for emotional support and mood analysis. How are you feeling today?`,
           sender: 'bot',
           timestamp: new Date()
         }
       ]);
     }
-  }, [isOpen]);
+  }, [isOpen, messages.length, modobot.mark, modobot.name]);
 
   const sendMessageToAI = async (userMessage) => {
-    // Check if API key is available
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-    if (!apiKey) {
-      console.error('OpenRouter API key not found, using fallback responses');
-      return getFallbackResponse(userMessage);
-    }
-    
-    const requestBody = {
-      model: "openrouter/meta-llama/llama-3-8b-instruct:free",
-      messages: [
-        {
-          role: "system",
-          content: modobot.systemPrompt
-        },
-        ...messages
-          .filter(msg => msg.sender === 'user' || msg.sender === 'bot')
-          .map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.text
-          })),
-        {
-          role: "user",
-          content: userMessage
-        }
-      ]
-    };
-
     try {
-      console.log('Sending request to OpenRouter:', { model: requestBody.model, messageCount: requestBody.messages.length });
-      
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const history = messages.slice(-8).map((entry) => ({ role: entry.sender === 'user' ? 'user' : 'assistant', content: entry.text }));
+      const response = await apiFetch('/api/chatbot', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Emote Moder - Modobot'
-        },
-        body: JSON.stringify(requestBody)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMessage, emotion: currentMood, history, includeMoodboardContext })
       });
-
-      console.log('OpenRouter response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('OpenRouter response data:', data);
-        
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          return content;
-        } else {
-          console.error('No content in response:', data);
-          return getFallbackResponse(userMessage);
-        }
-      } else {
-        const errorText = await response.text();
-        console.error('AI API Error:', response.status, errorText);
-        
-        if (response.status === 401) {
-          return 'Sorry, there\'s an authentication issue with the AI service. Please check your API key.';
-        } else if (response.status === 429) {
-          return 'Sorry, I\'m getting too many requests. Please wait a moment and try again.';
-        } else {
-          return getFallbackResponse(userMessage);
-        }
-      }
+      if (!response.ok) return getFallbackResponse(userMessage);
+      const data = await response.json();
+      return data.reply || getFallbackResponse(userMessage);
     } catch (error) {
-      console.error('Error calling AI API:', error);
+      console.error('Chat assistant unavailable:', error);
       return getFallbackResponse(userMessage);
     }
   };
-
   // Smart fallback response system
   const getFallbackResponse = (userMessage) => {
     const lowerMessage = userMessage.toLowerCase();
-    
+
     // Mood-based responses
     const moodResponses = {
       happy: [
-        'I can see you\'re in a great mood! That\'s wonderful! 😊 What\'s making you feel so happy?',
+        'That sounds like a good moment. What has been making you feel happy?',
         'Your happiness is contagious! I love seeing you in such a positive state!',
         'That\'s fantastic! When we\'re happy, everything feels possible. What\'s the highlight of your day?'
       ],
@@ -175,37 +120,37 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
 
     // Keyword-based responses
     if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-      return `Hello! I'm Modobot 🤖 How can I help you today? I'm here to listen and support you.`;
+      return `Hello! I'm Modobot. How can I help you today? I'm here to listen and support you.`;
     }
-    
+
     if (lowerMessage.includes('how are you')) {
       return `I'm doing great, thank you for asking! I'm here and ready to support you. How are you feeling?`;
     }
-    
+
     if (lowerMessage.includes('bye') || lowerMessage.includes('goodbye')) {
-      return `Goodbye! Take care of yourself and remember, I'm always here when you need someone to talk to. 👋`;
+      return `Goodbye! Take care of yourself. I'm here whenever you'd like to talk.`;
     }
-    
+
     if (lowerMessage.includes('help')) {
       return `I'm here to help! I can listen to your feelings, provide emotional support, help you understand your moods, and just be a friendly companion. What would you like to talk about?`;
     }
-    
+
     if (lowerMessage.includes('mood') || lowerMessage.includes('feeling')) {
       return `I can see you're currently feeling ${currentMood}. That's completely normal! Would you like to talk about what's causing this mood?`;
     }
-    
+
     if (lowerMessage.includes('sad') || lowerMessage.includes('depressed') || lowerMessage.includes('lonely')) {
       return `I can sense you're going through a difficult time. Your feelings are valid, and you don't have to go through this alone. I'm here to listen and support you.`;
     }
-    
+
     if (lowerMessage.includes('angry') || lowerMessage.includes('mad') || lowerMessage.includes('frustrated')) {
       return `I understand you're feeling angry. That's a natural emotion. Let's talk about what's causing this frustration. Sometimes just talking about it can help.`;
     }
-    
+
     if (lowerMessage.includes('anxious') || lowerMessage.includes('worried') || lowerMessage.includes('scared')) {
       return `Anxiety can be really overwhelming. You're not alone in feeling this way. Let's work through this together. What's on your mind?`;
     }
-    
+
     // Default intelligent responses
     const defaultResponses = [
       'That\'s really interesting! Tell me more about how you\'re feeling.',
@@ -217,7 +162,7 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
       'That\'s a valid perspective. How are you feeling about this situation?',
       'I appreciate you opening up to me. What would be most helpful for you right now?'
     ];
-    
+
     return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
   };
 
@@ -237,7 +182,7 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
 
     try {
       const aiResponse = await sendMessageToAI(inputMessage);
-      
+
       const botMessage = {
         id: Date.now() + 1,
         text: aiResponse,
@@ -267,6 +212,12 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
     }
   };
 
+  const handleMoodboardConsent = (event) => {
+    const enabled = event.target.checked;
+    setIncludeMoodboardContext(enabled);
+    localStorage.setItem('emotemoder.aiMoodboardContext', String(enabled));
+  };
+
   return (
     <>
       {/* Floating Chat Button */}
@@ -274,10 +225,10 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-lg bg-gradient-to-r ${modobot.color} text-white flex items-center justify-center text-2xl transition-all duration-300 hover:shadow-xl`}
+        className="assistant-launcher fixed bottom-6 right-6 z-50 w-14 h-14 flex items-center justify-center"
         aria-label="Open Modobot"
       >
-        {isOpen ? '✕' : modobot.emoji}
+        {isOpen ? '✕' : modobot.mark}
       </motion.button>
 
       {/* Chat Window */}
@@ -288,14 +239,14 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 20 }}
             transition={{ duration: 0.3 }}
-            className="fixed bottom-24 right-6 z-40 w-80 h-96 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col"
+            className="assistant-panel fixed bottom-24 right-6 z-40 w-80 h-96 flex flex-col"
           >
             {/* Header */}
-            <div className={`bg-gradient-to-r ${modobot.color} text-white p-4 rounded-t-2xl`}>
+            <div className="assistant-header p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                    {modobot.emoji}
+                    {modobot.mark}
                   </div>
                   <div>
                     <h3 className="font-semibold">{modobot.name}</h3>
@@ -304,7 +255,7 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
                 </div>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="text-white/80 hover:text-white transition-colors"
+                  className="assistant-close"
                 >
                   ✕
                 </button>
@@ -321,7 +272,7 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
                   className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-xs px-3 py-2 rounded-2xl ${
+                    className={`assistant-message assistant-message-${message.sender} max-w-xs px-3 py-2 rounded-2xl ${
                       message.sender === 'user'
                         ? 'bg-blue-500 text-white'
                         : 'bg-gray-100 text-gray-800'
@@ -334,7 +285,7 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
                   </div>
                 </motion.div>
               ))}
-              
+
               {isTyping && (
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -354,21 +305,27 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
             </div>
 
             {/* Input */}
-            <div className="p-4 border-t border-gray-200">
+            <div className="assistant-input-area p-4">
+              <label className="mb-2 flex cursor-pointer items-start gap-2 text-xs leading-tight opacity-80">
+                <input type="checkbox" checked={includeMoodboardContext} onChange={handleMoodboardConsent} className="mt-0.5" />
+                <span>Use a summary of my 3 latest moodboards for more personal replies. Shared with the AI provider.</span>
+              </label>
               <div className="flex space-x-2">
                 <input
                   type="text"
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyPress}
                   placeholder={`Chat with ${modobot.name}...`}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="assistant-input flex-1 px-3 py-2"
+                  maxLength={4000}
+                  aria-label="Message Modobot"
                   disabled={isTyping}
                 />
                 <button
                   onClick={handleSendMessage}
                   disabled={!inputMessage.trim() || isTyping}
-                  className={`px-4 py-2 rounded-full text-white transition-colors ${
+                  className={`assistant-send px-4 py-2 rounded-xl transition-colors ${
                     inputMessage.trim() && !isTyping
                       ? `bg-gradient-to-r ${modobot.color} hover:opacity-90`
                       : 'bg-gray-300 cursor-not-allowed'
@@ -385,4 +342,4 @@ Keep responses conversational, helpful, and emotionally intelligent.`,
   );
 };
 
-export default CustomChatbot; 
+export default CustomChatbot;

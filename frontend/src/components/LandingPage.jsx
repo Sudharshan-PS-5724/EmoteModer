@@ -1,373 +1,187 @@
-import { motion, useScroll, useTransform } from 'framer-motion';
-import { useRef, useEffect, useState } from 'react';
-import { useMood } from '../context/MoodContext.jsx';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth.jsx';
+import ThemeToggle from './ThemeToggle';
 
-// Floating Emoji Particle Component
-const FloatingEmoji = ({ emoji, delay, duration, x, y }) => {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0 }}
-      animate={{ 
-        opacity: [0, 1, 0],
-        scale: [0, 1, 0],
-        y: [y, y - 100, y - 200],
-        x: [x, x + Math.random() * 50 - 25, x + Math.random() * 100 - 50]
-      }}
-      transition={{
-        duration: duration,
-        delay: delay,
-        repeat: Infinity,
-        ease: "easeInOut"
-      }}
-      className="absolute pointer-events-none text-2xl sm:text-3xl md:text-4xl z-0"
-      style={{ left: x, top: y }}
-    >
-      {emoji}
-    </motion.div>
-  );
+const moods = [
+  { label: 'Feeling lighter', name: 'happy', tone: 'sun' },
+  { label: 'Need a pause', name: 'soft', tone: 'blue' },
+  { label: 'Fired up', name: 'bold', tone: 'coral' },
+  { label: 'Not sure yet', name: 'uncertain', tone: 'slate' },
+  { label: 'Ready to move on', name: 'release', tone: 'green' },
+  { label: 'Caught off guard', name: 'surprise', tone: 'pink' },
+];
+
+const moodPaths = {
+  happy: <><path d="m12 2 2.1 6.1L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-1.9L12 2Z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16Z" /></>,
+  soft: <><path d="M4 14c2.2-5.3 4.7-5.3 7 0s4.8 5.3 7 0" /><path d="M5 7c1.8-2 4.1-3 7-3s5.2 1 7 3" /></>,
+  bold: <path d="m13 2-8 12h6l-1 8 9-13h-6l1-7Z" />,
+  uncertain: <><path d="M12 3a9 9 0 1 0 9 9" /><path d="M12 7a5 5 0 1 0 5 5" /><path d="M12 11a1 1 0 1 0 1 1" /></>,
+  release: <><path d="M4 17 18 7" /><path d="M11 7h7v7" /><path d="M4 21h16" /></>,
+  surprise: <><path d="m12 2 2.1 6.1L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-1.9L12 2Z" /><path d="M19 3v4m-2-2h4" /></>,
+  talk: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-6.5a2.5 2.5 0 0 1-1-2V5.5Z" /><path d="M8 8h8M8 12h5" /></>,
+  collect: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-2.2 1.3L12 17l-5.8 2.8A1.5 1.5 0 0 1 4 18.5v-13Z" /><path d="M8 8h8M8 11h5" /></>,
+  discover: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5m-10-14v7m-3.5-3.5h7" /></>,
 };
 
-const LandingPage = () => {
-  const { currentMood, setCurrentMood } = useMood();
-  const parallaxRef = useRef(null);
-  const { scrollY } = useScroll({ container: parallaxRef });
-  const [particles, setParticles] = useState([]);
-  
-  // Parallax transforms for backgrounds
-  const y1 = useTransform(scrollY, [0, 600], [0, 100]);
-  const y2 = useTransform(scrollY, [0, 600], [0, -80]);
-  const y3 = useTransform(scrollY, [0, 600], [0, 60]);
+function MoodMark({ name, className = 'mood-symbol' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {moodPaths[name]}
+    </svg>
+  );
+}
+const features = [
+  {
+    number: '01',
+    title: 'Talk it out',
+    description: 'Find a room that fits today. Listen, share, and change moods when you need to.',
+    icon: 'talk',
+    link: '/chat',
+    action: 'Find your room',
+    tone: 'feature-pink',
+  },
+  {
+    number: '02',
+    title: 'Make it yours',
+    description: 'Turn words, colors, and saved moments into a board that feels like you.',
+    icon: 'collect',
+    link: '/login',
+    action: 'Start collecting',
+    tone: 'feature-gold',
+  },
+  {
+    number: '03',
+    title: 'Find a new view',
+    description: 'Wander through the community gallery and see the world through someone else’s mood.',
+    icon: 'discover',
+    link: '/gallery',
+    action: 'Explore the gallery',
+    tone: 'feature-plum',
+  },
+];
 
-  const emotions = [
-    { name: 'happy', emoji: '😊', description: 'Joyful & Bright', color: 'from-yellow-400 to-orange-400' },
-    { name: 'sad', emoji: '😢', description: 'Melancholic & Reflective', color: 'from-blue-400 to-purple-400' },
-    { name: 'angry', emoji: '😠', description: 'Intense & Passionate', color: 'from-red-400 to-pink-400' },
-    { name: 'fear', emoji: '😨', description: 'Anxious & Cautious', color: 'from-gray-400 to-gray-600' },
-    { name: 'disgust', emoji: '🤢', description: 'Repulsed & Disturbed', color: 'from-green-400 to-teal-400' },
-    { name: 'surprise', emoji: '😲', description: 'Amazed & Astonished', color: 'from-pink-400 to-purple-400' }
-  ];
-
-  // Generate floating emoji particles
-  useEffect(() => {
-    const emojis = ['😊', '😢', '😠', '😨', '🤢', '😲'];
-    const newParticles = [];
-    
-    for (let i = 0; i < 30; i++) {
-      newParticles.push({
-        id: i,
-        emoji: emojis[Math.floor(Math.random() * emojis.length)],
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        delay: Math.random() * 5,
-        duration: 8 + Math.random() * 4
-      });
-    }
-    
-    setParticles(newParticles);
-  }, []);
-
-  // Function to get mood classes
-  const getMoodClasses = (moodName) => {
-    const classes = {
-      happy: {
-        primary: 'bg-mood-happy-primary',
-        secondary: 'bg-mood-happy-secondary',
-        accent: 'bg-mood-happy-accent',
-        text: 'text-mood-happy-text'
-      },
-      sad: {
-        primary: 'bg-mood-sad-primary',
-        secondary: 'bg-mood-sad-secondary',
-        accent: 'bg-mood-sad-accent',
-        text: 'text-mood-sad-text'
-      },
-      angry: {
-        primary: 'bg-mood-angry-primary',
-        secondary: 'bg-mood-angry-secondary',
-        accent: 'bg-mood-angry-accent',
-        text: 'text-mood-angry-text'
-      },
-      fear: {
-        primary: 'bg-mood-fear-primary',
-        secondary: 'bg-mood-fear-secondary',
-        accent: 'bg-mood-fear-accent',
-        text: 'text-mood-fear-text'
-      },
-      disgust: {
-        primary: 'bg-mood-disgust-primary',
-        secondary: 'bg-mood-disgust-secondary',
-        accent: 'bg-mood-disgust-accent',
-        text: 'text-mood-disgust-text'
-      },
-      surprise: {
-        primary: 'bg-mood-surprise-primary',
-        secondary: 'bg-mood-surprise-secondary',
-        accent: 'bg-mood-surprise-accent',
-        text: 'text-mood-surprise-text'
-      }
-    };
-    return classes[moodName] || classes.happy;
-  };
-
-  const currentMoodClasses = getMoodClasses(currentMood);
+export default function LandingPage() {
+  const { login, authError } = useAuth();
 
   return (
-    <div ref={parallaxRef} className="min-h-screen relative overflow-x-hidden bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
-      {/* Floating Emoji Particles */}
-      {particles.map(particle => (
-        <FloatingEmoji
-          key={particle.id}
-          emoji={particle.emoji}
-          delay={particle.delay}
-          duration={particle.duration}
-          x={particle.x}
-          y={particle.y}
-        />
-      ))}
+    <main className="landing-page">
+      <header className="landing-header">
+        <Link to="/" className="brand-lockup" aria-label="EmoteModer home">
+          <span className="brand-mark">e<span>m</span></span>
+          <span className="brand-name">emote<span>moder</span><small>feel it. make it.</small></span>
+        </Link>
+        <div className="landing-header-actions">
+          <ThemeToggle />
+          <Link to="/gallery" className="landing-gallery-link">Explore the gallery <span>↗</span></Link>
+          <Link to="/demo" className="landing-gallery-link">Try a demo <span>↗</span></Link>
+          <Link to="/login" className="landing-signin-link">Sign in <span>↗</span></Link>
+        </div>
+      </header>
 
-      {/* Parallax Animated Background */}
-      <motion.div style={{ y: y1 }} className="absolute top-20 left-20 w-32 h-32 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full blur-xl z-0 opacity-30" />
-      <motion.div style={{ y: y2 }} className="absolute top-40 right-20 w-24 h-24 bg-gradient-to-r from-blue-400 to-purple-400 rounded-full blur-xl z-0 opacity-30" />
-      <motion.div style={{ y: y3 }} className="absolute bottom-20 left-1/3 w-40 h-40 bg-gradient-to-r from-pink-400 to-red-400 rounded-full blur-xl z-0 opacity-30" />
+      <section className="landing-hero">
+        <div className="hero-copy">
+          <p className="eyebrow">A SOCIAL SPACE FOR EVERY SIDE OF YOU</p>
+          <h1>Feel it.<br /><span>Make something</span><br />of it.</h1>
+          <p className="hero-description">A place to talk it out, save the little things, and find people who get the mood you’re in.</p>
+          <div className="hero-actions">
+            <button className="button-primary hero-cta" onClick={login}>Make your space <span>↗</span></button>
+            <Link className="hero-secondary" to="/demo">Try out a demo emo <span>→</span></Link>
+            <Link className="hero-secondary" to="/gallery">See what people are making <span>→</span></Link>
+          </div>
+          {authError && <p className="form-error hero-auth-error" role="alert">{authError}</p>}
+          <div className="hero-social-proof">
+            <div className="proof-avatars" aria-hidden="true">
+              {moods.slice(0, 3).map((mood) => (
+                <span key={mood.name} className={'proof-avatar tone-' + mood.tone}>
+                  <MoodMark name={mood.name} />
+                </span>
+              ))}
+              <span className="proof-plus" aria-hidden="true">+</span>
+            </div>
+            <p>A softer place to show up<br /><strong>exactly as you are.</strong></p>
+          </div>
+        </div>
 
-      {/* Hero Section */}
-      <section className="min-h-screen flex flex-col justify-center items-center text-center px-4 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="max-w-4xl mx-auto"
-        >
-          {/* Animated Logo */}
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ duration: 1, type: "spring" }}
-            className="mb-8"
-          >
-            <div className="text-8xl sm:text-9xl mb-4">🎭</div>
-          </motion.div>
+        <div className="hero-art" aria-label="A playful arrangement of colorful moodboard cards">
+          <div className="hero-card hero-card-back">
+            <small>COLLECT A MOMENT</small>
+            <MoodMark name="happy" className="hero-card-mark" />
+          </div>
+          <div className="hero-card hero-card-main">
+            <MoodMark name="soft" className="hero-main-glyph" />
+            <p>somewhere<br />between okay<br />and figuring it out</p>
+            <small>YOUR FEELING, YOURS TO KEEP</small>
+          </div>
+          <div className="hero-card hero-card-sticker">
+            little<br />by little
+            <MoodMark name="release" className="sticker-mark" />
+          </div>
+          <div className="hero-note">a mood can be<br />more than one thing</div>
+          <div className="hero-art-caption"><span>COLLECTION Nº 01</span><span>MADE OF FEELINGS</span></div>
+        </div>
+      </section>
 
-          {/* Main Title */}
-          <motion.h1
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-5xl sm:text-7xl md:text-8xl font-bold mb-6 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent"
-          >
-            Emote Moder
-          </motion.h1>
+      <section className="promise-ribbon" aria-label="EmoteModer: say, save, share, revisit">
+        <p>YOUR FEELING, YOUR MEDIUM</p>
+        <div className="promise-items">
+          <span><b>01</b> say it</span>
+          <i aria-hidden="true" />
+          <span><b>02</b> save it</span>
+          <i aria-hidden="true" />
+          <span><b>03</b> share it</span>
+          <i aria-hidden="true" />
+          <span><b>04</b> come back to it</span>
+        </div>
+        <span className="promise-sticker">no wrong order ↗</span>
+      </section>
 
-          {/* Subtitle */}
-          <motion.p
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.4 }}
-            className="text-xl sm:text-2xl md:text-3xl text-gray-700 mb-8 max-w-3xl mx-auto font-light"
-          >
-            Where emotions meet intelligence. 
-            <span className="block text-purple-600 font-semibold">Express, analyze, and understand your feelings.</span>
-          </motion.p>
+      <section className="landing-moods">
+        <div className="landing-section-title">
+          <p className="eyebrow">THERE’S NO WRONG WAY TO FEEL</p>
+          <h2>Make room for all of it.</h2>
+          <p>Pick a starting point. Your mood is allowed to change.</p>
+        </div>
+        <div className="mood-preview-grid">
+          {moods.map((mood) => (
+            <div key={mood.name} className={'mood-preview tone-' + mood.tone}>
+              <MoodMark name={mood.name} />
+              <strong>{mood.label}</strong>
+              <span className="mood-spark" aria-hidden="true">↗</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
-          {/* CTA Buttons */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.6 }}
-            className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-16"
-          >
-            <motion.button
-              whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => window.location.href = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/auth/google`}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-8 py-4 text-xl font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              🚀 Start Your Journey
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="bg-white/80 backdrop-blur-sm text-gray-700 border-2 border-purple-200 px-8 py-4 text-xl font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              📚 Learn More
-            </motion.button>
-          </motion.div>
-
-          {/* Stats */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.8 }}
-            className="grid grid-cols-3 gap-8 max-w-2xl mx-auto"
-          >
-            {[
-              { number: '6', label: 'Emotions' },
-              { number: 'AI', label: 'Powered' },
-              { number: '∞', label: 'Possibilities' }
-            ].map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-3xl sm:text-4xl font-bold text-purple-600">{stat.number}</div>
-                <div className="text-gray-600 font-medium">{stat.label}</div>
+      <section className="landing-how">
+        <div className="how-heading">
+          <p className="eyebrow">A LITTLE BIT OF EVERYTHING YOU NEED</p>
+          <h2>Talk, collect,<br />come back to yourself.</h2>
+          <p>Keep it small, make it yours, and let the mood move.</p>
+          <span className="how-stamp">MADE FOR<br />THE IN-BETWEEN</span>
+        </div>
+        <div className="how-cards">
+          {features.map((feature) => (
+            <article className={'feature-card ' + feature.tone} key={feature.number}>
+              <div className="feature-card-top">
+                <span className="feature-number">{feature.number}</span>
+                <MoodMark name={feature.icon} className="feature-icon" />
               </div>
-            ))}
-          </motion.div>
-        </motion.div>
-      </section>
-
-      {/* Features Section */}
-      <section className="py-20 px-4 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="max-w-6xl mx-auto"
-        >
-          <h2 className="text-4xl sm:text-5xl font-bold text-center mb-16 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Revolutionary Features
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: '🧠',
-                title: 'AI Emotion Recognition',
-                description: 'Advanced NLP models analyze your emotions with 95% accuracy',
-                gradient: 'from-blue-500 to-purple-500'
-              },
-              {
-                icon: '🎤',
-                title: 'Voice Assistant',
-                description: 'Natural voice responses that adapt to your emotional state',
-                gradient: 'from-pink-500 to-red-500'
-              },
-              {
-                icon: '📊',
-                title: 'Real-time Analytics',
-                description: 'Track your emotional patterns with live mood history',
-                gradient: 'from-green-500 to-teal-500'
-              }
-            ].map((feature, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.2 }}
-                whileHover={{ scale: 1.05, y: -10 }}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all duration-300"
-              >
-                <div className={`text-6xl mb-6 bg-gradient-to-r ${feature.gradient} bg-clip-text text-transparent`}>
-                  {feature.icon}
-                </div>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">
-                  {feature.title}
-                </h3>
-                <p className="text-gray-600 text-lg leading-relaxed">
-                  {feature.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* Emotions Section */}
-      <section className="py-20 px-4 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="max-w-6xl mx-auto"
-        >
-          <h2 className="text-4xl sm:text-5xl font-bold text-center mb-16 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Explore Your Emotions
-          </h2>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-            {emotions.map((emotion, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                whileHover={{ scale: 1.05, rotate: 5 }}
-                className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 text-center cursor-pointer shadow-lg hover:shadow-xl transition-all duration-300"
-                onClick={() => setCurrentMood(emotion.name)}
-              >
-                <div className="text-6xl mb-4">{emotion.emoji}</div>
-                <h3 className="text-xl font-bold mb-2 text-gray-800">
-                  {emotion.name.charAt(0).toUpperCase() + emotion.name.slice(1)}
-                </h3>
-                <p className="text-gray-600">
-                  {emotion.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      </section>
-
-      {/* About Section */}
-      <section className="py-20 px-4 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="max-w-4xl mx-auto text-center"
-        >
-          <h2 className="text-4xl sm:text-5xl font-bold mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            About Emote Moder
-          </h2>
-          <p className="text-xl text-gray-700 leading-relaxed mb-8">
-            Emote Moder is a revolutionary emotion recognition platform that combines cutting-edge AI technology with intuitive design. 
-            Our advanced NLP models analyze your emotions in real-time, providing personalized insights into your mental well-being.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
-            {[
-              { number: '95%', label: 'Accuracy Rate' },
-              { number: '24/7', label: 'AI Support' },
-              { number: '100%', label: 'Privacy Focused' }
-            ].map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-3xl font-bold text-purple-600">{stat.number}</div>
-                <div className="text-gray-600">{stat.label}</div>
+              <div>
+                <strong>{feature.title}</strong>
+                <p>{feature.description}</p>
               </div>
-            ))}
-          </div>
-        </motion.div>
+              <Link to={feature.link} onClick={feature.link === '/login' ? (event) => { event.preventDefault(); login(); } : undefined}>
+                {feature.action}<span aria-hidden="true">↗</span>
+              </Link>
+            </article>
+          ))}
+        </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 px-4 relative z-10">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="max-w-4xl mx-auto text-center"
-        >
-          <h2 className="text-4xl sm:text-5xl font-bold mb-8 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Ready to Start Your Journey?
-          </h2>
-          <p className="text-xl text-gray-700 mb-8">
-            Join thousands of users who are already exploring their emotions with Emote Moder.
-          </p>
-          <motion.button
-            whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(0,0,0,0.1)" }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => window.location.href = `${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}/auth/google`}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-12 py-6 text-2xl font-bold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
-          >
-            🚀 Get Started Now
-          </motion.button>
-        </motion.div>
-      </section>
-    </div>
+      <footer className="landing-footer">
+        <span>emote moder · for every in-between</span>
+        <button onClick={login}>Come on in ↗</button>
+      </footer>
+    </main>
   );
-};
-
-export default LandingPage; 
+}

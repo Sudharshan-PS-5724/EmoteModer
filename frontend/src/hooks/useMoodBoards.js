@@ -1,134 +1,84 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiFetch } from '../lib/api';
+import { useAuth } from './useAuth.jsx';
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+async function readResponse(response) {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.message || 'The moodboard request could not be completed.');
+  return data;
+}
 
 export const useMoodBoards = () => {
+  const { firebaseUser } = useAuth();
+  const uid = firebaseUser?.uid;
   const [boards, setBoards] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [nextCursor, setNextCursor] = useState(null);
+  const controller = useRef(null);
+  // Ignore late responses after a user changes account, page, or request.
+  const generation = useRef(0);
 
-  const fetchBoards = async () => {
+  const fetchBoards = useCallback(async (cursor = null) => {
+    controller.current?.abort();
+    const request = new AbortController();
+    controller.current = request;
+    const version = ++generation.current;
+    if (!uid) { setBoards([]); setNextCursor(null); setLoading(false); return; }
     setLoading(true);
     setError(null);
-    
     try {
-      const response = await fetch(`${API_BASE}/api/moodboards`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setBoards(data);
-      } else {
-        throw new Error('Failed to fetch mood boards');
-      }
+      const response = await apiFetch('/api/moodboards' + (cursor ? '?cursor=' + encodeURIComponent(cursor) : ''), { signal: request.signal });
+      const data = await readResponse(response);
+      if (version !== generation.current || request.signal.aborted) return;
+      setBoards((previous) => cursor ? [...new Map([...previous, ...data].map((board) => [board._id || board.id, board])).values()] : data);
+      setNextCursor(response.headers.get('X-Next-Cursor'));
     } catch (err) {
-      console.error('Error fetching mood boards:', err);
-      setError(err.message);
+      if (!request.signal.aborted && version === generation.current) setError(err.message);
     } finally {
-      setLoading(false);
+      if (version === generation.current) setLoading(false);
     }
-  };
+  }, [uid]);
+
+  useEffect(() => {
+    setBoards([]);
+    setNextCursor(null);
+    fetchBoards();
+    return () => { controller.current?.abort(); generation.current += 1; };
+  }, [fetchBoards]);
 
   const createBoard = async (boardData) => {
-    setLoading(true);
-    setError(null);
-    
+    controller.current?.abort();
+    const version = ++generation.current;
+    setLoading(true); setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/moodboards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(boardData)
-      });
-      
-      if (response.ok) {
-        const newBoard = await response.json();
-        setBoards(prev => [...prev, newBoard]);
-        return newBoard;
-      } else {
-        throw new Error('Failed to create mood board');
-      }
+      const board = await readResponse(await apiFetch('/api/moodboards', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(boardData)
+      }));
+      if (version === generation.current) setBoards((previous) => [board, ...previous.filter((entry) => entry._id !== board._id)]);
+      return board;
     } catch (err) {
-      console.error('Error creating mood board:', err);
-      setError(err.message);
+      if (version === generation.current) setError(err.message);
       throw err;
-    } finally {
-      setLoading(false);
-    }
+    } finally { if (version === generation.current) setLoading(false); }
   };
 
   const deleteBoard = async (boardId) => {
-    if (!boardId) {
-      console.error('Board ID is required for deletion');
-      throw new Error('Board ID is required');
-    }
-    
-    setLoading(true);
-    setError(null);
-    
+    if (!boardId) throw new Error('Board ID is required');
+    controller.current?.abort();
+    const version = ++generation.current;
+    setLoading(true); setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/moodboards/${boardId}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        // Fix: Use _id instead of id for MongoDB documents, handle both cases
-        setBoards(prev => prev.filter(board => {
-          const boardIdToCheck = board._id || board.id;
-          return boardIdToCheck !== boardId;
-        }));
-        return true;
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to delete mood board');
-      }
+      await readResponse(await apiFetch('/api/moodboards/' + encodeURIComponent(boardId), { method: 'DELETE' }));
+      if (version === generation.current) setBoards((previous) => previous.filter((board) => (board._id || board.id) !== boardId));
+      return true;
     } catch (err) {
-      console.error('Error deleting mood board:', err);
-      setError(err.message);
+      if (version === generation.current) setError(err.message);
       throw err;
-    } finally {
-      setLoading(false);
-    }
+    } finally { if (version === generation.current) setLoading(false); }
   };
 
-  const getBoard = async (boardId) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch(`${API_BASE}/api/moodboards/${boardId}`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        return await response.json();
-      } else {
-        throw new Error('Failed to fetch mood board');
-      }
-    } catch (err) {
-      console.error('Error fetching mood board:', err);
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchBoards();
-  }, []);
-
-  return {
-    boards,
-    loading,
-    error,
-    fetchBoards,
-    createBoard,
-    deleteBoard,
-    getBoard
-  };
-}; 
+  const getBoard = async (boardId) => readResponse(await apiFetch('/api/moodboards/' + encodeURIComponent(boardId)));
+  return { boards, loading, error, fetchBoards: () => fetchBoards(), createBoard, deleteBoard, getBoard,
+    hasMore: Boolean(nextCursor), loadMore: () => nextCursor && !loading ? fetchBoards(nextCursor) : Promise.resolve() };
+};

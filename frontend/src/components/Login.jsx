@@ -1,79 +1,56 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
+import ThemeToggle from './ThemeToggle';
+export default function Login() {
+  const { login, authError, loading } = useAuth();
+  const [startingSignIn, setStartingSignIn] = useState(false);
 
-const Login = () => {
-  const { login } = useAuth();
+  const handleSignIn = async () => {
+    setStartingSignIn(true);
+    try {
+      await login();
+    } finally {
+      setStartingSignIn(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 border border-gray-100"
-      >
-        <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className="text-6xl mb-4"
-          >
-            🎨
-          </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2"
-          >
-            Welcome to MoodBoard Me
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="text-gray-600 text-lg"
-          >
-            Express your feelings through beautiful mood boards
-          </motion.p>
+    <main className="login-page">
+      <div className="login-topline">
+        <Link to="/" className="brand-lockup login-brand" aria-label="EmoteModer home">
+          <span className="brand-mark">e<span>m</span></span>
+          <span className="brand-name">emote<span>moder</span><small>feel it. make it.</small></span>
+        </Link>
+        <ThemeToggle />
+      </div>
+      <section className="login-card" aria-labelledby="login-title">
+        <div className="login-art" aria-hidden="true">
+          <span className="login-shape shape-a">✳</span>
+          <span className="login-shape shape-b">◒</span>
+          <span className="login-shape shape-c">⌁</span>
+          <span className="login-sticker">YOU<br />BELONG<br />HERE</span>
         </div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="space-y-4"
-        >
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={login}
-            className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-xl px-6 py-4 text-gray-700 font-semibold hover:border-purple-300 hover:shadow-lg transition-all duration-300"
-          >
-            <svg className="w-6 h-6" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        <p className="eyebrow">YOUR SPACE IS WAITING</p>
+        <h1 id="login-title">Come as<br /><span>you are.</span></h1>
+        <p className="login-copy">Save the moments, colors, and feelings that make up your day.</p>
+        <div className="login-actions">
+          <button type="button" className="google-button" onClick={handleSignIn} disabled={startingSignIn || loading}>
+            <svg aria-hidden="true" viewBox="0 0 48 48" width="19" height="19">
+              <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11a9.4 9.4 0 0 1-4.1 6.2v5.1h6.6c3.9-3.6 6.1-8.9 6.1-15Z" />
+              <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.6-5.1c-1.8 1.2-4.1 2-6.9 2-5.3 0-9.8-3.6-11.4-8.4H5.8v5.3A20 20 0 0 0 24 44Z" />
+              <path fill="#FBBC05" d="M12.6 27.7a12 12 0 0 1 0-7.4V15H5.8a20 20 0 0 0 0 17.9l6.8-5.2Z" />
+              <path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6 29.5 4 24 4A20 20 0 0 0 5.8 15l6.8 5.3C14.2 15.6 18.7 12 24 12Z" />
             </svg>
-            Continue with Google
-          </motion.button>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
-          className="mt-8 text-center text-sm text-gray-500"
-        >
-          <p>
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </p>
-        </motion.div>
-      </motion.div>
-    </div>
+            {startingSignIn ? 'Connecting…' : 'Continue with Google'} <span aria-hidden="true">↗</span>
+          </button>
+          <span className="login-action-divider">or explore first</span>
+          <Link className="login-demo-button" to="/demo"><span aria-hidden="true">✦</span> Try the interactive demo <b>↗</b></Link>
+        </div>
+        {authError && <p className="form-error" role="alert">{authError}</p>}
+        <p className="login-terms">Google sign-in keeps your personal space connected to you.</p>
+        <Link className="login-back" to="/">← Back to home</Link>
+      </section>
+    </main>
   );
-};
-
-export default Login; 
+}

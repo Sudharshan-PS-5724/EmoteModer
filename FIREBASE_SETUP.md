@@ -1,152 +1,31 @@
-# Firebase Setup for Chat Cleanup Service
+# Firebase Authentication and Firestore
 
-## 🔥 **Firebase Configuration**
+Firebase Authentication is the single sign-in system for the browser, API, and Firestore. The browser sends its Firebase ID token to Express; Express verifies it with Firebase Admin before reading or writing MongoDB data. Firebase's verified Google identity links older MongoDB profiles.
 
-To enable the daily chat cleanup service, you need to configure Firebase in your backend.
+## Configure Firebase Auth
 
-### **Step 1: Create Firebase Project**
+1. In Firebase Console, select the project named by `VITE_FIREBASE_PROJECT_ID`. Open **Project settings → General → Your apps** and create or select a **Web app**. Copy that app's complete Firebase config into `frontend/.env`; do not reuse an API key from another Google Cloud project.
+2. Open **Authentication → Get started** to initialize Firebase Authentication. Then open **Sign-in method**, enable **Google**, choose a support email, and save.
+3. Open **Authentication → Settings → Authorized domains** and add `localhost` (required for newer Firebase projects) plus the production frontend host when applicable.
+4. In Firebase **Project settings → Service accounts**, generate an Admin SDK private key. Copy its `project_id`, `client_email`, and `private_key` into backend `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`. Keep this private key only in the ignored `backend/.env` and the backend deployment's secret settings. Never put it in a `VITE_` variable or commit it.
+5. Configure `MONGO_URI` and `FRONTEND_URL`, then stop and restart the Vite dev server so it reloads `frontend/.env`.
 
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Click "Add project"
-3. Enter project name: `moodboard-me-chat`
-4. Enable Google Analytics (optional)
-5. Click "Create project"
+## `auth/configuration-not-found` on localhost
 
-### **Step 2: Get Firebase Config**
+This response comes from Firebase before EmoteModer's API receives a request. It means the web API key cannot retrieve the Firebase Authentication configuration. In the selected Firebase project, initialize Authentication, enable Google, and replace the six `VITE_FIREBASE_*` values with a fresh config copied from **Project settings → General → Your apps → Web app**. Confirm that the API key and project ID come from the same web app, then restart Vite. If API-key restrictions were changed manually in Google Cloud, ensure the Firebase Authentication APIs remain allowed, or use the auto-provisioned Firebase key from the freshly copied config.
 
-1. In Firebase Console, click the gear icon ⚙️ → "Project settings"
-2. Scroll down to "Your apps" section
-3. Click "Add app" → "Web" (</>)
-4. Register app with name: `moodboard-backend`
-5. Copy the config object
+## Firestore rules
 
-### **Step 3: Add Environment Variables**
+Deploy [`firebase/firestore.rules`](firebase/firestore.rules). Never use rules with `allow read, write: if true`. These rules require a Firebase Auth token, bind message and typing writes to the token UID, and prevent users from editing or deleting another person's messages. MongoDB board ownership retains the existing Google provider ID; Firebase UID is stored separately.
 
-Add these to your `backend/.env` file:
+Every protected API route requires `Authorization: Bearer <Firebase ID token>`. The backend verifies the token signature, project, expiry, Google provider, and verified email with Firebase Admin. Do not trust a Firebase UID or profile sent by the browser as identity proof. Bearer auth also avoids cross-site session cookies when the frontend and API use separate hosting domains.
 
-```env
-# Firebase Configuration
-FIREBASE_API_KEY=your-api-key-here
-FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-FIREBASE_MESSAGING_SENDER_ID=123456789
-FIREBASE_APP_ID=1:123456789:web:abcdef123456
-```
+## Firestore free quota
 
-### **Step 4: Enable Firestore Database**
+Firebase's Spark plan does not require a payment method. If a free quota is exceeded, the affected Firebase request is denied until the provider's reset/availability rules allow it again; Spark does not automatically charge a card. Exact limits change, so check Firebase's current pricing and quota pages before launch rather than copying an old screenshot or number.
 
-1. In Firebase Console, go to "Firestore Database"
-2. Click "Create database"
-3. Choose "Start in test mode" (for development)
-4. Select a location close to your users
-5. Click "Done"
+To deploy the included rules and indexes, install the Firebase CLI, select the same project used by the web app, and run `firebase deploy --only firestore` from the repository root. Review the selected project before deployment.
 
-### **Step 5: Set Up Security Rules**
+## Message retention
 
-In Firestore Database → Rules, add these rules:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // Allow read/write access to chat rooms
-    match /chatRooms/{roomId} {
-      allow read, write: if true; // For development
-    }
-    
-    // Allow read/write access to messages
-    match /chatRooms/{roomId}/messages/{messageId} {
-      allow read, write: if true; // For development
-    }
-    
-    // Allow read/write access to typing indicators
-    match /chatRooms/{roomId}/typing/{typingId} {
-      allow read, write: if true; // For development
-    }
-  }
-}
-```
-
-**⚠️ Note:** These rules allow public access for development. For production, implement proper authentication rules.
-
-## 🧹 **Chat Cleanup Service**
-
-The cleanup service automatically:
-
-- **Deletes messages older than 24 hours** from all 6 mood rooms
-- **Cleans up stale typing indicators** (older than 5 minutes)
-- **Runs daily at 2 AM** automatically
-- **Can be triggered manually** via `/api/admin/cleanup` endpoint
-
-### **Storage Management**
-
-- **Free Tier Limits:** 1GB storage, 50k reads/day, 20k writes/day
-- **Daily Cleanup:** Keeps storage usage low
-- **Message Lifecycle:** Messages are automatically deleted after 24 hours
-- **Typing Indicators:** Cleaned up after 5 minutes of inactivity
-
-### **Manual Cleanup**
-
-To trigger cleanup manually:
-
-```bash
-curl -X POST http://localhost:5000/api/admin/cleanup \
-  -H "Content-Type: application/json" \
-  -b "connect.sid=your-session-cookie"
-```
-
-## 📊 **Monitoring**
-
-Check cleanup status in server logs:
-
-```
-✅ Chat cleanup service started
-Next chat cleanup scheduled for: 2024-01-15 02:00:00
-Starting daily chat cleanup...
-Deleted 45 messages from happy room
-Deleted 23 messages from calm room
-Chat cleanup completed! Total messages deleted: 156
-```
-
-## 🔧 **Troubleshooting**
-
-### **Firebase Not Configured**
-If you see: `⚠️ Firebase not configured, chat cleanup disabled`
-
-**Solution:** Add Firebase environment variables to `.env` file
-
-### **Permission Denied**
-If you see: `Error during chat cleanup: Permission denied`
-
-**Solution:** Check Firestore security rules and ensure they allow read/write access
-
-### **Connection Issues**
-If you see: `Error during chat cleanup: Network error`
-
-**Solution:** Check internet connection and Firebase project configuration
-
-## 🚀 **Production Considerations**
-
-1. **Security Rules:** Implement proper authentication-based rules
-2. **Rate Limiting:** Add rate limiting to cleanup endpoint
-3. **Monitoring:** Set up Firebase monitoring and alerts
-4. **Backup:** Consider backing up important messages before cleanup
-5. **Customization:** Adjust cleanup frequency based on your needs
-
-## 📈 **Scaling Options**
-
-### **Free Tier (Current)**
-- 200-300 active chat users/day
-- 1GB storage
-- Daily cleanup keeps usage low
-
-### **Paid Plans**
-- **Blaze Plan:** Pay-as-you-go, higher limits
-- **Firestore:** 1GB free, then $0.18/GB/month
-- **Real-time Database:** Alternative to Firestore
-
-### **Alternative Solutions**
-- **Supabase:** PostgreSQL with real-time features
-- **Pusher:** Real-time messaging service
-- **Socket.io:** WebSocket-based chat 
+Firestore records include an `expiresAt` timestamp for future retention tooling: chat messages are marked for 30 days and typing indicators for 10 minutes. **Do not configure managed Firestore TTL while staying on the no-cost Spark plan:** Firebase bills TTL deletes and enabling it requires billing. The app works without it; expired records remain stored until you deliberately add a paid retention solution or manually remove test data. Chat rooms currently use `happy`, `sad`, `angry`, `fear`, `disgust`, and `surprise`.

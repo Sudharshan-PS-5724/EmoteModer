@@ -1,12 +1,40 @@
-# React + Vite
+# EmoteModer frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This folder is the React/Vite browser application. It is separate from the Express API so the visual app can be deployed as static files while database credentials and AI requests stay private on the backend.
 
-Currently, two official plugins are available:
+## Important folders
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `src/App.jsx` - client routes, authentication gates, and lazy-loaded screens.
+- `src/components/` - landing, dashboard, chat, gallery, profile, demo, and Modobot UI.
+- `src/hooks/useAuth.jsx` - Firebase Google sign-in state.
+- `src/hooks/useMoodBoards.js` - authenticated moodboard API calls.
+- `src/hooks/useChat.js` - direct Firestore live-chat subscription and typing state.
+- `src/lib/api.js` - attaches a fresh Firebase ID token to protected API requests.
+- `src/firebase.js` - initializes Firebase from `VITE_FIREBASE_*` values.
+- `src/design-system.css` and `src/index.css` - shared visual tokens and responsive styles.
 
-## Expanding the ESLint configuration
+## Browser routes
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+| URL | Sign-in needed? | Purpose |
+| --- | --- | --- |
+| `/` | No | Landing page; signed-in people go to their dashboard. |
+| `/login` | No | Google sign-in and demo entry point. |
+| `/demo` | No | Static guided tour. Nothing is sent to Firebase, MongoDB, or the API. |
+| `/gallery` | No | Public moodboards only. |
+| `/dashboard` | Yes | Create, browse, and delete personal moodboards. |
+| `/chat` | Yes | Choose and join a live community mood room. |
+| `/profile` | Yes | View the signed-in profile. |
+
+## Environment and commands
+
+Create `frontend/.env` from `.env.example`. Only names beginning with `VITE_` reach browser code. Firebase web configuration belongs here; it identifies the Firebase app and is safe to be public. Never put an Admin SDK private key, MongoDB URI, or AI credential in it.
+
+For a separately hosted API, set `VITE_BACKEND_URL=https://your-api.example`. Leave it unset locally; Vite proxies `/api` to port 5000.
+
+```sh
+npm run dev --prefix frontend
+npm run lint --prefix frontend
+npm run build --prefix frontend
+```
+
+The full-stack guide is in the repository [README](../README.md).

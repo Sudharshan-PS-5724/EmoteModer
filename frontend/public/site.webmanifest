@@ -1,0 +1,10 @@
+{
+  "name": "EmoteModer",
+  "short_name": "EmoteModer",
+  "description": "A softer social space for moodboards and community rooms.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#d8dccc",
+  "theme_color": "#e8b343",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
